@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0
+// pot.compact: the smallest example for the race harness. Not a cage: no operator, no seats. It shows I1 (one
+// deposit binds the payout address) and the race tests that go with it. Compile with compactc 0.31.1:
+//   compact compile --skip-zk example/pot.compact example/managed/pot
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export ledger balance: Map<Bytes<32>, Uint<64>>;
+export ledger payTo: Map<Bytes<32>, UserAddress>;
+
+witness secretKey(): Bytes<32>;
+
+export pure circuit playerId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pot:player:v0"), sk]);
+}
+
+circuit me(): Bytes<32> { return disclose(playerId(secretKey())); }
+circuit bal(id: Bytes<32>): Uint<64> { return balance.member(id) ? balance.lookup(id) : 0; }
+
+export circuit deposit(payout: UserAddress, amount: Uint<64>): [] {
+  const id = me();
+  const a = disclose(amount);
+  const p = disclose(payout);
+  assert(a > 0, "amount must be positive");
+  receiveUnshielded(nativeToken(), a as Uint<128>);
+  if (payTo.member(id)) assert(payTo.lookup(id) == p, "payout address is fixed at first deposit");
+  else payTo.insert(id, p);
+  balance.insert(id, (bal(id) + a) as Uint<64>);
+}
+
+// No address argument: the money can only go where the first deposit said.
+export circuit withdraw(amount: Uint<64>): [] {
+  const id = me();
+  const a = disclose(amount);
+  assert(payTo.member(id), "no payout address");
+  assert(a > 0 && a <= bal(id), "bad amount");
+  balance.insert(id, (bal(id) - a) as Uint<64>);
+  sendUnshielded(nativeToken(), a as Uint<128>, right<ContractAddress, UserAddress>(payTo.lookup(id)));
+}

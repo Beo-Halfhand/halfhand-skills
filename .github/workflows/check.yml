@@ -1,0 +1,21 @@
+name: check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: skill lint and leak grep
+        run: node tools/check.mjs
+      - name: city-driver-starter self-test (fake City, no network)
+        run: node skills/city-driver-starter/scripts/selftest.mjs
+      - name: gitleaks (history and tree)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks git . --redact --no-banner
+          ./gitleaks dir . --redact --no-banner

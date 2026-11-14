@@ -1,0 +1,5 @@
+node_modules/
+fit-report/
+.DS_Store
+.env*
+*.log

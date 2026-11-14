@@ -1,0 +1,12 @@
+{
+  "name": "page-watch",
+  "version": "0.2.0",
+  "description": "Checks your public pages on a schedule: data age against each page's max, HTTP status, broken links, page errors, link cards, optional fit; writes a markdown report that says since when.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": { "page-watch": "watch.mjs" },
+  "scripts": { "test": "node selftest.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "playwright-core": "1.64.1" }
+}

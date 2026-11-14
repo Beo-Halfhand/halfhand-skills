@@ -1,0 +1,17 @@
+{
+  "skillDir": "../midnight-city-direct-control",
+  "agentId": "",
+  "mode": "gather",
+  "jobs": [],
+  "keep": [],
+  "food": [],
+  "tickSeconds": 60,
+  "words": {
+    "enabled": false,
+    "url": "http://127.0.0.1:11434/api/chat",
+    "model": "",
+    "everyMinutes": 60,
+    "apiKeyEnv": "",
+    "timeoutSeconds": 30
+  }
+}

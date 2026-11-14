@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: Apache-2.0
+// tally: the sealed-count pattern at its smallest. An example for the sealed-count-proof skill, not a product.
+//
+// Up to six slots each seal five private values (a "hand"). Once sealing has closed, the asker posts a target, and each slot proves how
+// many of its own values equal the target. The proof shows the count comes from the sealed hand; the hand stays private. The chain adds
+// the counts. Nobody, including the asker, tells it the total.
+//
+//   seal        anyone, once per slot: the commitment only
+//   ask         the asker's key: the target, and the answer window starts
+//   proveCount  the slot's owner (whoever knows the hand behind the seal): the count, nothing else
+//   finish      anyone: once every slot has answered, or the window has closed
+//
+// Simplified on purpose. A real contract also names each slot's holder when the round opens (so nobody can take a slot first), keys
+// everything by round, and decides what silence means. hall-cage's dice-proof.compact shows all of that.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum Phase { sealing, asked, done }
+export struct Hand { nonce: Bytes<32>; values: Vector<5, Uint<8>>; }
+
+export sealed ledger asker: Bytes<32>;        // H(the asker's key)
+export sealed ledger answerSecs: Uint<64>;    // fixed at deployment, inside limits anyone can read below
+export sealed ledger clockSlack: Uint<64>;    // how far a declared `now` may lag block time
+
+export ledger phase: Phase;
+export ledger target: Uint<8>;
+export ledger answerBy: Uint<64>;
+export ledger commits: Map<Uint<8>, Bytes<32>>;   // written once per slot
+export ledger answers: Map<Uint<8>, Uint<8>>;     // written once per slot: the count, and only the count
+// Counters: an increment reads nothing, so slots sealing or answering in the same block don't make each other's transaction stale.
+export ledger sealedCount: Counter;
+export ledger answeredCount: Counter;
+export ledger total: Counter;
+export ledger result: Uint<64>;                   // the total, copied when the tally finishes
+
+witness askerKey(): Bytes<32>;
+witness handOf(slot: Uint<8>): Hand;
+
+// ---------- pure: anyone can run the same arithmetic off chain ----------
+
+export pure circuit keyId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "tally:key:v1"), sk]);
+}
+// Domain tag, the random nonce (five small values alone could be guessed: 256^5 tries at most), the slot, and this contract's address,
+// so a seal or a proof made for one slot or one deployment means nothing at another.
+export pure circuit commitOf(h: Hand, slot: Uint<8>, self: Bytes<32>): Bytes<32> {
+  return persistentHash<[Bytes<32>, Bytes<32>, Vector<5, Uint<8>>, Uint<8>, Bytes<32>]>([pad(32, "tally:commit:v1"), h.nonce, h.values, slot, self]);
+}
+export pure circuit countOf(values: Vector<5, Uint<8>>, t: Uint<8>): Uint<8> {
+  return fold((n, v) => (n + (v == t ? 1 : 0)) as Uint<8>, 0 as Uint<8>, values);
+}
+
+constructor(askerId: Bytes<32>, answer: Uint<64>, slack: Uint<64>) {
+  assert(disclose(slack) >= 30 && disclose(slack) <= 300, "the clock slack must be 30 s to 5 min");
+  assert(disclose(answer) >= 120 && disclose(answer) <= 3600, "the answer window must be 2 min to 1 h");
+  asker = disclose(askerId);
+  answerSecs = disclose(answer);
+  clockSlack = disclose(slack);
+}
+
+// A circuit can compare block time but not read it, so the caller declares `now`: not in the future, and not stale.
+circuit checkedNow(now: Uint<64>): Uint<64> {
+  const n = disclose(now);
+  assert(blockTimeGte(n), "declared time is in the future");
+  assert(blockTimeLt((n + clockSlack) as Uint<64>), "declared time is stale");
+  return n;
+}
+
+export circuit seal(slot: Uint<8>, commit: Bytes<32>): [] {
+  const s = disclose(slot);
+  const c = disclose(commit);
+  assert(phase == Phase.sealing, "sealing has closed");
+  assert(s < 6, "no such slot");
+  assert(!commits.member(s), "this slot is already sealed");
+  assert(c != default<Bytes<32>>, "a seal must be a commitment");
+  commits.insert(s, c);
+  sealedCount.increment(1);
+}
+
+export circuit ask(t: Uint<8>, now: Uint<64>): [] {
+  assert(disclose(keyId(askerKey()) == asker), "asker only");
+  const n = checkedNow(now);
+  assert(phase == Phase.sealing, "the question has already been asked");
+  assert(sealedCount.read() >= 1, "nothing is sealed");
+  phase = Phase.asked;
+  target = disclose(t);
+  // The slack is added so a back-dated `now` can't eat into the window.
+  answerBy = (n + clockSlack + answerSecs) as Uint<64>;
+}
+
+// The one place the private hand enters. It must be the sealed one; only the count leaves.
+export circuit proveCount(slot: Uint<8>, claimed: Uint<8>): [] {
+  const s = disclose(slot);
+  const n = disclose(claimed);
+  assert(phase == Phase.asked, "no question to answer");
+  assert(commits.member(s), "no seal at this slot");
+  assert(!answers.member(s), "this slot has already answered");
+  assert(blockTimeLt(answerBy), "too late: the answer window has closed");
+  const h = handOf(s);
+  assert(disclose(commitOf(h, s, kernel.self().bytes) == commits.lookup(s)), "this is not the hand sealed at this slot");
+  assert(disclose(countOf(h.values, target) == n), "that is not this slot's count");
+  answers.insert(s, n);
+  answeredCount.increment(1);
+  total.increment(n as Uint<16>);
+}
+
+// Anyone, and it takes no argument: the total is what was proven, not what someone says.
+export circuit finish(): [] {
+  assert(phase == Phase.asked, "no question to finish");
+  assert(answeredCount.read() == sealedCount.read() || blockTimeGte(answerBy), "slots can still answer");
+  phase = Phase.done;
+  result = total.read();
+}

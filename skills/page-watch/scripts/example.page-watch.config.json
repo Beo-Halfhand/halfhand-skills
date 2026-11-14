@@ -1,0 +1,22 @@
+{
+  "about": "Copy to page-watch.config.json and replace the pages. Relative paths are relative to this file. See references/config.md.",
+  "report": {
+    "dir": "./page-watch-report",
+    "staleAfterHours": 26,
+    "timeZone": "UTC",
+    "footer": "",
+    "retryHint": ""
+  },
+  "state": { "dir": "./.page-watch-state" },
+  "userAgent": "page-watch/0.2 (+https://example.com/contact)",
+  "fit": { "enabled": false, "widths": [390, 1440] },
+  "links": { "concurrency": 6, "skip": [] },
+  "pages": [
+    { "url": "https://example.com/", "name": "Home", "source": "static" },
+    { "url": "https://example.com/status", "name": "Status board", "source": "the status job, every 10 min", "maxAgeMinutes": 30 },
+    { "url": "https://example.com/blog/hello", "name": "A post", "source": "static", "linkCard": false }
+  ],
+  "services": [
+    { "url": "https://example.com/api/health", "name": "API health", "source": "the API's own health route", "path": "status", "expect": "ok", "say": "API not healthy", "whyPath": "reason" }
+  ]
+}

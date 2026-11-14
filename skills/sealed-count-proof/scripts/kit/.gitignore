@@ -1,0 +1,4 @@
+managed/
+example/managed/
+node_modules/
+package-lock.json

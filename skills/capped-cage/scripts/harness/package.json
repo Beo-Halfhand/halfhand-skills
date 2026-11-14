@@ -1,0 +1,14 @@
+{
+  "name": "capped-cage-harness",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "The race harness for code compiled by compactc 0.31.1, which checks for compact-runtime 0.16.0. Another compiler needs the runtime it checks for: see references/race-harness.md.",
+  "scripts": {
+    "compile:example": "compact compile --skip-zk example/pot.compact example/managed/pot",
+    "test": "node --test example/"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0"
+  }
+}

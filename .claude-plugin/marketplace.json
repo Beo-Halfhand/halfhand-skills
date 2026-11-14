@@ -1,0 +1,15 @@
+{
+  "name": "halfhand-skills",
+  "owner": {
+    "name": "Beo Halfhand",
+    "url": "https://halfhand.dev"
+  },
+  "plugins": [
+    {
+      "name": "halfhand",
+      "source": "./",
+      "description": "Skills from the builds at halfhand.dev: fit-check (text fit at nine widths), prepublish-leak-check (secrets and setup details before publishing), dust-wallet (a self-funded Midnight wallet that pays its fees in DUST), capped-cage (invariants and attack tests for a contract that holds funds next to an operator key), page-watch (a scheduled report of stale or broken public pages), sealed-count-proof (proving a count over sealed values on Midnight, with a test kit), city-driver-starter (a first driver for your own Midnight City agent: pause and honest logs).",
+      "version": "0.6.0"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "sealed-count-kit",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Test kit for a contract that proves counts over sealed values: simulator world, circuit checker, cheat builds, changed circuits, mutant sweep. For code compiled by compactc 0.31.1, which checks for compact-runtime 0.16.0.",
+  "scripts": {
+    "compile:example": "compact compile --skip-zk example/tally.compact example/managed/tally",
+    "test": "node --test example/",
+    "sweep:example": "node mutants.mjs example/tally.compact example/mutations.json example/tally.test.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/zkir-v2": "2.2.0"
+  }
+}
