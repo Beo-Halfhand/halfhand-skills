@@ -48,7 +48,7 @@ npm install
 node dust-wallet.mjs self-test          # expect: self-test: 18 ok, 0 failed
 ```
 
-Pins (tested together): `@midnightntwrk/wallet-sdk` 2.0.0, `@midnightntwrk/ledger-v9` 1.0.0 (held there with `overrides`), `@polkadot/api` 16.5.6. Don't float them: a wallet SDK 1.x can't read Ledger 9 events at all.
+Pins (tested together): `@midnightntwrk/wallet-sdk` 2.0.1, `@midnightntwrk/ledger-v9` 1.0.2 (held there with `overrides`; the Midnight.js 5.0.1 patch set of 17 November 2026, which needs ledger-v9 1.0.2 or later), `@polkadot/api` 16.5.6. Don't float them: a wallet SDK 1.x can't read Ledger 9 events at all.
 
 ### 3. Put the endpoints in a `.env` and ignore it
 
@@ -140,4 +140,4 @@ Tell the user:
 - [references/endpoints.md](references/endpoints.md): node, indexer, proof server.
 - [references/hall-cage.md](references/hall-cage.md): the same pattern in a public, working project (pinned commit).
 
-Tested on: `@midnightntwrk/wallet-sdk` 2.0.0, `@midnightntwrk/ledger-v9` 1.0.0, `@polkadot/api` 16.5.6, Node 26 (22 is the floor the packages need; not tested on 22), macOS arm64. Full live run on **Preview** (Ledger 9, 13 November 2026): init → faucet → sync → `dust --send` → DUST READY. On **Preprod**, only the timings above were measured, with the same wallet SDK in another project; this script's own Preprod run is pending. Status: in development.
+Tested on: `@midnightntwrk/wallet-sdk` 2.0.0, `@midnightntwrk/ledger-v9` 1.0.0, `@polkadot/api` 16.5.6, Node 26 (22 is the floor the packages need; not tested on 22), macOS arm64. Full live run on **Preview** (Ledger 9, 13 November 2026): init → faucet → sync → `dust --send` → DUST READY. On **Preprod**, only the timings above were measured, with the same wallet SDK in another project; this script's own Preprod run is pending. On the 5.0.1 patch set (wallet SDK 2.0.1, ledger-v9 1.0.2, 17 November 2026) only the self-test and an offline `init` + `address` were run; the live Preview run above was on 2.0.0 / 1.0.0. Status: in development.
