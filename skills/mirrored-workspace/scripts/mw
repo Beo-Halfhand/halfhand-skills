@@ -4,6 +4,7 @@
 # through the masker first; if the masker can't run, nothing is written.
 #
 #   mw new <tab>          attach to tab, or create it with logging on (tmux new -A -s <tab>)
+#   mw new -d <tab>       create it detached (also what happens with no terminal: scripts, agents); MW_NEW_CMD = its command
 #   mw ls                 tabs, panes, logging on/off, snapshot age
 #   mw snap [--loop]      write one snapshot of every pane (--loop: every MW_SNAP_EVERY seconds)
 #   mw log <tab>          (used by tmux pipe-pane) mask stdin and append to logs/<tab>-YYYYMMDD.log
@@ -24,6 +25,7 @@
 #   MW_LOG_MAX_MB      size of one log part before the next (default 20)
 #   MW_MASK_EXTRA      file of extra regexes to mask, one per line (your hostnames, ids)
 #   MW_MASK_GENERIC    1 = also mask any 24+ char token mixing upper, lower and digits (default 1)
+#   MW_SNAPPER         which snapper install.sh set up: launchd, systemd, loop or none (doctor checks it)
 set -uo pipefail
 
 cfg="${XDG_CONFIG_HOME:-$HOME/.config}/mirrored-workspace/config"
@@ -81,17 +83,23 @@ cmd_log() {
 pipe_cmd() { printf 'exec %s log %s' "$(q "$self")" "$(q "$1")"; }
 
 cmd_new() {
-  local tab="${1:?usage: mw new <tab>}"
+  local detached="${MW_DETACHED:-}"
+  [ "${1:-}" = -d ] && { detached=1; shift; }
+  local tab="${1:?usage: mw new [-d] <tab>}"
+  # No terminal (a script, an agent, ssh without -t): attaching can't work, so create detached instead.
+  { [ -t 0 ] && [ -t 1 ]; } || detached=1
   valid_tab "$tab" || die "tab names are letters, digits, _ and - (got '$tab')"
   mkdir -p "$LOGS" "$SNAPDIR"
   if t has-session -t "=$tab" 2>/dev/null; then
+    if [ -n "$detached" ]; then echo "tab $tab is already running; attach from a terminal with: mw new $tab"; return 0; fi
     if [ -n "${TMUX:-}" ]; then exec "$MW_TMUX" switch-client -t "=$tab"; fi
     if [ -n "$MW_TMUX_SOCKET" ]; then exec "$MW_TMUX" -L "$MW_TMUX_SOCKET" attach -t "=$tab"; fi
     exec "$MW_TMUX" attach -t "=$tab"
   fi
   # New tab: create it with logging on. (pipe-pane without -o replaces a pipe; -o would toggle one off.)
-  if [ -n "${MW_DETACHED:-}" ]; then
-    t new-session -d -s "$tab" ${MW_NEW_CMD:+"$MW_NEW_CMD"} && t pipe-pane -t "=$tab:" "$(pipe_cmd "$tab")"
+  if [ -n "$detached" ]; then
+    t new-session -d -s "$tab" ${MW_NEW_CMD:+"$MW_NEW_CMD"} && t pipe-pane -t "=$tab:" "$(pipe_cmd "$tab")" || return 1
+    echo "created tab $tab (detached, logging on); attach from a terminal with: mw new $tab"
     return
   fi
   if [ -n "$MW_TMUX_SOCKET" ]; then exec "$MW_TMUX" -L "$MW_TMUX_SOCKET" new-session -s "$tab" \; pipe-pane "$(pipe_cmd "$tab")"; fi
@@ -196,6 +204,14 @@ cmd_doctor() {
   local s w p id piped cmd off=0 n=0
   while IFS='|' read -r id w p piped cmd s; do n=$((n + 1)); [ "$piped" = 1 ] || { off=$((off + 1)); echo "      not logging: $s w${w}p${p}"; }; done < <(panes)
   if [ "$n" -eq 0 ]; then wa "no tmux server running"; elif [ "$off" -eq 0 ]; then ok "all $n pane(s) logging"; else wa "$off of $n pane(s) not logging (mw pipe-all turns them on)"; fi
+  # snapper
+  case "${MW_SNAPPER:-}" in
+    launchd) launchctl print "gui/$(id -u)/${MW_SNAP_LABEL:-local.mirrored-workspace.snap}" >/dev/null 2>&1 && ok "snapper: launchd agent loaded" || no "snapper: launchd agent ${MW_SNAP_LABEL:-local.mirrored-workspace.snap} is not loaded" ;;
+    systemd) systemctl --user is-active --quiet mirrored-workspace-snap.timer 2>/dev/null && ok "snapper: systemd timer active" || no "snapper: systemd timer mirrored-workspace-snap.timer is not active" ;;
+    loop) t has-session -t "=snap" 2>/dev/null && ok "snapper: the 'snap' tab is running" || no "snapper: no 'snap' tab (start it: tmux new -d -s snap 'mw snap --loop')" ;;
+    none) ok "snapper: none (your own scheduler runs mw snap)" ;;
+    *) wa "snapper: not recorded in the config (installed before mw recorded it; set MW_SNAPPER)" ;;
+  esac
   # snapshots fresh
   if [ -f "$SNAPDIR/INDEX.md" ]; then
     local age=$(( $(date +%s) - $(stat -c %Y "$SNAPDIR/INDEX.md" 2>/dev/null || stat -f %m "$SNAPDIR/INDEX.md") ))

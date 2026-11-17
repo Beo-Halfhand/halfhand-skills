@@ -23,10 +23,11 @@
 ## Anywhere: a tab that loops
 
 ```sh
-tmux new -d -s snap 'mw snap --loop'
+bash install.sh --snapper loop      # starts it, and records MW_SNAP_SKIP=snap in the config
+tmux new -d -s snap 'mw snap --loop'   # or by hand
 ```
 
-Add `MW_SNAP_SKIP="snap"` to the config so it doesn't snapshot itself. It stops if the tmux server stops, so the scheduler options are better on a machine that reboots.
+By hand, add the line `: "${MW_SNAP_SKIP:=snap}"` to the config so it doesn't snapshot itself (in that form, so the environment can still override it). It stops if the tmux server stops, so the scheduler options are better on a machine that reboots; after a reboot, start it again with the line above. This is the option for a machine without launchd or a systemd user manager (a container, WSL).
 
 ## Settings
 | Setting | Default | |

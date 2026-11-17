@@ -38,6 +38,9 @@ while [ $# -gt 0 ]; do
 done
 
 os="$(uname -s)"
+cfg_file="${XDG_CONFIG_HOME:-$HOME/.config}/mirrored-workspace/config"
+# --uninstall without --snapper: undo whatever the install recorded in the config
+if [ -z "$snapper" ] && [ "$uninstall" = 1 ] && [ -f "$cfg_file" ]; then snapper="$(sed -n 's/^: "\${MW_SNAPPER:=\([a-z]*\)}".*/\1/p' "$cfg_file" | head -1)"; fi
 [ -n "$snapper" ] || { [ "$os" = Darwin ] && snapper=launchd || snapper=systemd; }
 case "$snapper" in launchd|systemd|loop|none) ;; *) echo "install.sh: --snapper is launchd, systemd, loop or none" >&2; exit 2 ;; esac
 printf '%s' "$every" | grep -Eq '^[0-9]+$' && [ "$every" -ge 10 ] || { echo "install.sh: --every is a whole number of seconds, 10 or more" >&2; exit 2; }
@@ -67,8 +70,9 @@ path_for_jobs="$( { [ -n "$tmux_bin" ] && dirname "$tmux_bin"; [ -n "$node_bin" 
 # ------------------------------------------------------------------------------------------------
 if [ "$uninstall" = 1 ]; then
   if [ "$snapper" = launchd ] && [ -f "$plist" ]; then run launchctl bootout "gui/$(id -u)/$label" || true; run rm -f "$plist"; fi
+  if [ "$snapper" = loop ] && "${tmux_bin:-tmux}" has-session -t =snap 2>/dev/null; then run "$tmux_bin" kill-session -t =snap; fi
   if [ "$snapper" = systemd ] && [ -f "$sd_dir/mirrored-workspace-snap.timer" ]; then
-    run systemctl --user disable --now mirrored-workspace-snap.timer || true
+    command -v systemctl >/dev/null && { run systemctl --user disable --now mirrored-workspace-snap.timer || true; }
     run rm -f "$sd_dir/mirrored-workspace-snap.timer" "$sd_dir/mirrored-workspace-snap.service"
   fi
   if [ -f "$HOME/.tmux.conf" ] && grep -qF "$mark_begin" "$HOME/.tmux.conf"; then
@@ -76,7 +80,9 @@ if [ "$uninstall" = 1 ]; then
     else awk -v b="$mark_begin" -v e="$mark_end" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' "$HOME/.tmux.conf" >"$HOME/.tmux.conf.tmp" && mv "$HOME/.tmux.conf.tmp" "$HOME/.tmux.conf"; echo "removed the block from ~/.tmux.conf"; fi
   fi
   run rm -f "$cfg_dir/tmux.conf" "$mw" "$bin_dir/mw-mask.pl"; run rm -rf "$bin_dir/safe-logs"
-  echo "Uninstalled. Kept: $cfg_dir/config and $mw_home (your logs and snapshots). Running tmux servers keep their hooks until restarted."
+  echo "Uninstalled. Kept: $cfg_dir/config and $mw_home (your logs and snapshots; delete them yourself if you want them gone)."
+  echo "A tmux server that is already running keeps its logging hooks until it restarts. To drop them now:"
+  echo "  tmux set-hook -gu 'after-new-session[77]'; tmux set-hook -gu 'after-new-window[77]'; tmux set-hook -gu 'after-split-window[77]'"
   exit 0
 fi
 
@@ -85,6 +91,10 @@ fi
 [ -n "$node_bin" ] || { echo "install.sh: node not found; the masker (safe-logs) needs it, and nothing is logged without the masker" >&2; exit 1; }
 sl="$here/../../safe-logs/scripts"
 [ -f "$sl/mask-pipe.mjs" ] || { echo "install.sh: the safe-logs skill is not next to this one (skills/safe-logs); nothing is logged without it" >&2; exit 1; }
+if [ "$snapper" = systemd ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+  msg="no systemd user manager here (a container, WSL or a minimal VM). Use --snapper loop (a tmux tab) or --snapper none (your own scheduler)"
+  if [ "$dry" = 1 ]; then echo "WARNING: the real install would stop here: $msg"; else echo "install.sh: $msg. Nothing was changed." >&2; exit 1; fi
+fi
 [ "$dry" = 1 ] && echo "DRY RUN: nothing will change."
 
 # 1. the command
@@ -107,6 +117,9 @@ else put "$cfg_dir/config" 600 <<EOF
 : "\${MW_SNAP_EVERY:=$every}"
 : "\${MW_LOG_KEEP_DAYS:=14}"
 : "\${MW_LOG_MAX_MB:=20}"
+: "\${MW_SNAPPER:=$snapper}"
+: "\${MW_SNAP_LABEL:=$label}"
+$([ "$snapper" = loop ] && echo ': "${MW_SNAP_SKIP:=snap}"   # the snapper tab does not snapshot itself')
 # : "\${MW_MASK_EXTRA:=$cfg_dir/mask-extra}"   # your own hostnames or ids to mask, one regex per line
 EOF
 fi
@@ -136,7 +149,11 @@ case "$snapper" in
     run systemctl --user enable --now mirrored-workspace-snap.timer
     echo "note: to keep snapshots running while you're logged out: loginctl enable-linger \"\$USER\" (needs your OK; may ask for a password)"
     ;;
-  loop) echo "snapper: start it in its own tab and leave it running:  tmux new -d -s snap '$mw snap --loop'  (and add MW_SNAP_SKIP=snap to the config)" ;;
+  loop)
+    if "$tmux_bin" has-session -t =snap 2>/dev/null; then echo "snapper: the 'snap' tab is already running"
+    else run "$tmux_bin" new-session -d -s snap "$mw snap --loop" && echo "snapper: started the 'snap' tab (mw snap --loop). It stops when the tmux server stops: after a reboot, start it again with  tmux new -d -s snap '$mw snap --loop'"; fi
+    grep -q 'MW_SNAP_SKIP:=snap' "$cfg_dir/config" 2>/dev/null || echo "add this line to $cfg_dir/config so the tab doesn't snapshot itself:  : \"\${MW_SNAP_SKIP:=snap}\""
+    ;;
   none) echo "snapper: none installed. Run '$mw snap' from your own scheduler." ;;
 esac
 
@@ -148,5 +165,5 @@ Done$([ "$dry" = 1 ] && echo " (dry run)").
   Check:              mw doctor
   Logs:               $mw_home/logs/<tab>-YYYYMMDD.log
   Snapshots:          $mw_home/snapshots/<tab>-w0p0.txt  (index: snapshots/INDEX.md)
-Make sure $bin_dir is on your PATH.
+Make sure $bin_dir is on your PATH (Debian/Ubuntu add it at your next login if it exists; otherwise add  export PATH="$bin_dir:\$PATH"  to ~/.profile).
 EOF

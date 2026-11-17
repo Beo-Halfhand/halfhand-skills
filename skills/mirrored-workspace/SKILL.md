@@ -32,6 +32,8 @@ always-on machine                               laptop / phone
 
 ### 1. Try it (one command, touches nothing of yours)
 
+`<this skill>` is the folder that holds this SKILL.md. It needs tmux 3.2+ and node 20+ (how to install them: step 2), and the [safe-logs](../safe-logs/) skill next to this one (the plugin installs them together).
+
 ```sh
 bash <this skill>/scripts/try.sh
 ```
@@ -56,17 +58,20 @@ bash <this skill>/scripts/install.sh
 
 It copies `mw` and `safe-logs/` (the masker) to `~/.local/bin`, writes `~/.config/mirrored-workspace/config`, makes `~/mirrored-workspace/` (mode 700), adds one `source-file` line to `~/.tmux.conf` (hooks that log every new session, window and split), and installs the snapper: a launchd agent on macOS or a systemd user timer on Linux, running `mw snap` every 60 s. Options: `--home DIR`, `--every SECONDS`, `--snapper launchd|systemd|loop|none`, `--uninstall`. Details: [references/snapper.md](references/snapper.md).
 
+**No systemd user manager** (a container, WSL, a minimal VM): use `--snapper loop`, which starts a `snap` tab that refreshes the snapshots. The installer checks for systemd first: the dry run warns, and the real run stops before writing anything. The config records the snapper you chose, and `mw doctor` checks that it's running.
+
 It doesn't touch sessions that are already running. To log them too: `mw pipe-all` (it only turns logging **on**; it never toggles a pipe off).
 
 ### 4. Make tabs
 
 ```sh
 mw new build       # attach if "build" exists, else create it with logging on
+mw new -d build    # create it without attaching (what happens anyway with no terminal: a script, an agent)
 mw ls              # tabs, panes, logging on/off, snapshot age
 mw doctor          # tools, folder safety, panes not logging, snapshot freshness, masker test
 ```
 
-Name each tab after the one job it owns (`build`, `chat`, `deploy`), and keep a short map of tab → job where your assistant reads it (a `TABS` note in your notes; the agent-memory-vault skill in this repo has a place for it). Tab names are letters, digits, `_` and `-`.
+From a script or an agent, start a job in a new tab with `MW_NEW_CMD='npm run build' mw new -d build`. Name each tab after the one job it owns (`build`, `chat`, `deploy`), and keep a short map of tab → job where your assistant reads it (a `TABS` note in your notes; the agent-memory-vault skill in this repo has a place for it). Tab names are letters, digits, `_` and `-`.
 
 ### 5. Attach from another machine
 See [references/two-machines.md](references/two-machines.md). The whole idea:
@@ -96,7 +101,7 @@ Then one SSH alias on each client (`~/.ssh/config`):
 ```text
 Host always-on
   HostName <always-on's name on your private network>
-  User you
+  User <your user on always-on>
   IdentityFile ~/.ssh/id_ed25519
 ```
 
@@ -116,7 +121,7 @@ Host always-on
 - **Fail closed.** Logs and snapshots are written only by the masker. Masker missing, a bad regex in your terms file, or node not installed: no log line and no snapshot is written (the self-test checks all three).
 - **Private by default.** `MW_HOME` is mode 700; logs and snapshots are 600.
 - **Rotation.** One log per tab per day (`<tab>-YYYYMMDD.log`); past `MW_LOG_MAX_MB` (20) a day rolls to `.2.log`, `.3.log`; every snapshot run deletes logs and stale snapshots older than `MW_LOG_KEEP_DAYS` (14).
-- **Keep the folder out of public places.** [references/keeping-logs-private.md](references/keeping-logs-private.md). Never in a git repo that gets pushed, never in a shared or team folder, never behind an "anyone with the link" share. A log folder holds everything that crossed your terminal: commands, paths, machine names, and whatever slipped past the masker. `mw doctor` warns if `MW_HOME` sits in a synced folder or a git repo that doesn't ignore it.
+- **Keep the folder out of public places.** [references/keeping-logs-private.md](references/keeping-logs-private.md). Never in a git repo that gets pushed, never in a shared or team folder, never behind an "anyone with the link" share. A log folder holds everything that crossed your terminal: commands, paths, machine names, and whatever slipped past the masker. `mw doctor` warns if `MW_HOME` sits in a synced folder, and fails if it's in a git repo that doesn't ignore it.
 
 ## For the assistant reading the tabs
 - Start at `snapshots/INDEX.md`: every pane, what it's running, whether it's logging, when it was captured.
@@ -124,8 +129,17 @@ Host always-on
 - Text on an AI coding tool's input line may be the tool's own suggestion (ghost text), not something the person typed.
 - `<masked>` means the masker replaced something. Never ask for the value; ask which key, and where it's stored.
 
+## Undo
+
+```sh
+bash <this skill>/scripts/install.sh --uninstall     # removes mw, the hooks line, the snapper it recorded (launchd, systemd or the snap tab)
+rm -rf ~/mirrored-workspace ~/.config/mirrored-workspace   # only if you also want the logs, snapshots and config gone
+```
+
+A tmux server that's already running keeps its logging hooks until it restarts; the uninstaller prints the three `tmux set-hook -gu` lines that drop them now.
+
 ## Check it
-`bash scripts/selftest.sh` runs 51 checks: 15 on the masker, 7 on the logger (rotation, pruning, modes, scrub), fail-closed cases, hooks and snapshots on a private tmux server (including a scheduler's bare environment), the doctor's synced-folder warning, and the installer in a fake home folder (dry run, idempotent, uninstall, plist and systemd units). It never touches your own tmux server, `~/.tmux.conf` or scheduler.
+`bash <this skill>/scripts/selftest.sh` runs 56 checks on macOS; on Linux, 56 with systemd-analyze installed, and the plist lint skips without plutil or xmllint (expect `0 failed`): 15 on the masker, 7 on the logger (rotation, pruning, modes, scrub), fail-closed cases, hooks and snapshots on a private tmux server (including a scheduler's bare environment), `mw new` with no terminal, the doctor's synced-folder warning and snapper line, and the installer in a fake home folder (dry run, idempotent, uninstall, plist and systemd units, stopping cleanly with no systemd). It never touches your own tmux server, `~/.tmux.conf` or scheduler.
 
 ## Report back
 Tell the person: where `MW_HOME` is, which snapper was installed (`mw doctor` output), the tabs and whether each is logging (`mw ls`), and the SSH alias line for their other machines. Never paste a log or snapshot line that contains `<masked>` context they didn't ask for.

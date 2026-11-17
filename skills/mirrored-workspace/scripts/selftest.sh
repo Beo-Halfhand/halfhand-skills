@@ -96,6 +96,10 @@ if command -v tmux >/dev/null; then
   MW_DETACHED=1 MW_NEW_CMD="printf 'chat up ?project_id=%s\n' '$PID'; sleep 30" "$mw" new chat; sleep 1.5
   [ "$(t display -p -t '=chat:' '#{pane_pipe}')" = 1 ] && pass "mw new: tab created with logging on" || flop "mw new"
   "$mw" new 'bad name' >/dev/null 2>&1 && flop "mw new accepted a bad tab name" || pass "mw new refuses a bad tab name"
+  out="$(MW_NEW_CMD="sleep 30" "$mw" new solo </dev/null 2>&1)"; sleep 1
+  [ "$(t display -p -t '=solo:' '#{pane_pipe}' 2>/dev/null)" = 1 ] && printf '%s' "$out" | grep -q 'detached' && pass "mw new with no terminal (an agent, a script) creates the tab detached, logging on" || flop "mw new without a terminal: $out"
+  out="$("$mw" new solo </dev/null 2>&1)"; printf '%s' "$out" | grep -q 'already running' && pass "mw new with no terminal on an existing tab says so instead of failing" || flop "mw new existing, no terminal: $out"
+  t kill-session -t '=solo'
   "$mw" pipe-all >/dev/null; "$mw" pipe-all >/dev/null
   [ "$(t list-panes -a -F '#{pane_pipe}' | sort -u | tr -d '\n')" = 1 ] && pass "pipe-all twice never toggles logging off" || flop "pipe-all toggled a pipe"
   MW_SNAP_SKIP="chat" "$mw" snap
@@ -143,16 +147,24 @@ for u in service timer; do
 done
 if command -v systemd-analyze >/dev/null; then
   cp "$tmp/mw.service" "$tmp/mirrored-workspace-snap.service"; cp "$tmp/mw.timer" "$tmp/mirrored-workspace-snap.timer"
-  systemd-analyze verify --user "$tmp/mirrored-workspace-snap.timer" >/dev/null 2>&1 && pass "systemd-analyze verify" || skp "systemd-analyze verify (needs a user manager)"
+  if systemd-analyze verify --user "$tmp/mirrored-workspace-snap.timer" >/dev/null 2>&1; then pass "systemd-analyze verify"
+  # no user manager (a container, a CI runner): system mode still checks every line of both units
+  elif systemd-analyze verify "$tmp/mirrored-workspace-snap.timer" >"$tmp/sdv.out" 2>&1; then pass "systemd-analyze verify (system mode; no user manager here)"
+  else flop "systemd-analyze verify: $(head -1 "$tmp/sdv.out")"; fi
 fi
+H2="$tmp/home2"; mkdir -p "$H2" "$tmp/stub"; printf '#!/bin/sh\nexit 1\n' >"$tmp/stub/systemctl"; chmod 755 "$tmp/stub/systemctl"
+HOME="$H2" XDG_CONFIG_HOME="$H2/.config" MW_BIN_DIR="$H2/bin" MW_HOME= PATH="$tmp/stub:$PATH" bash "$here/install.sh" --snapper systemd >"$tmp/nosd.out" 2>&1; rc=$?
+[ "$rc" = 1 ] && [ -z "$(find "$H2" -mindepth 1 2>/dev/null)" ] && grep -q 'snapper loop' "$tmp/nosd.out" && pass "install: no systemd user manager -> stops before writing anything, says to use --snapper loop" || flop "install without systemd (rc=$rc)"
 run_install --snapper none >/dev/null 2>&1
+grep -q '^: "\${MW_SNAPPER:=none}"' "$H/.config/mirrored-workspace/config" && pass "install: the config records which snapper it set up" || flop "install: MW_SNAPPER not recorded"
+out="$(HOME="$H" XDG_CONFIG_HOME="$H/.config" MW_HOME="$tmp/plain-ws" "$H/bin/mw" doctor 2>/dev/null)"; printf '%s\n' "$out" | grep -q 'snapper: none' && pass "doctor: shows the snapper" || flop "doctor snapper line"
 [ -x "$H/bin/mw" ] && [ -f "$H/bin/safe-logs/mask-pipe.mjs" ] && pass "install: mw and its masker installed together" || flop "install: binaries"
 [ "$(grep -c 'mirrored-workspace >>>' "$H/.tmux.conf" 2>/dev/null)" = 1 ] && pass "install: one source-file block in ~/.tmux.conf" || flop "install: tmux.conf block"
 [ "$(fmode "$H/mirrored-workspace")" = 700 ] && pass "install: MW_HOME is 700" || flop "install: MW_HOME mode"
 run_install --snapper none >/dev/null 2>&1
 [ "$(grep -c 'mirrored-workspace >>>' "$H/.tmux.conf")" = 1 ] && pass "install twice: still one block" || flop "install twice duplicated the block"
 echo "keep me" >"$H/mirrored-workspace/logs/x.log"
-run_install --uninstall --snapper none >/dev/null 2>&1
+run_install --uninstall >/dev/null 2>&1     # no --snapper: it reads the one recorded in the config
 ! grep -q 'mirrored-workspace' "$H/.tmux.conf" && [ ! -e "$H/bin/mw" ] && [ -f "$H/mirrored-workspace/logs/x.log" ] && pass "uninstall: block and binaries gone, logs kept" || flop "uninstall"
 grep -rqF "$H" "$here/../templates" && flop "a test path leaked into templates" || true
 

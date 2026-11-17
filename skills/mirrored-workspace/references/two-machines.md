@@ -17,7 +17,7 @@ One machine stays on and runs every job. Every other machine is a window into it
 `-A` makes `new-session` attach if the session exists and create it if it doesn't, so one command works every time. If you created it here, the installed hooks start its log (they fire on every new session, window and split). To create through `mw` instead:
 
 ```sh
-mosh always-on -- ~/.local/bin/mw new build
+mosh always-on -- bash -lc 'mw new build'     # quoted, so ~ and PATH are the always-on machine's, not the laptop's
 ```
 
 Two clients can attach to the same tab at once. With `set -g window-size latest` the window fits whichever client you typed in last.

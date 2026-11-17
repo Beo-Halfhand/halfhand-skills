@@ -9,7 +9,7 @@ Teaches an AI agent to set up a terminal workspace it can see: one tmux session 
 | `../safe-logs/scripts/mask-pipe.mjs` | The masker (the safe-logs skill): strips escape codes, masks key-shaped text, writes logs with rotation |
 | `scripts/install.sh` | Installs `mw`, the tmux hooks and the snapper (launchd or systemd). `--dry-run`, `--uninstall` |
 | `scripts/try.sh` | One-command demo on its own tmux server: two tabs, snapshots updating, a fake id masked |
-| `scripts/selftest.sh` | 51 checks: masker, logger, fail-closed, hooks and snapshots, doctor, installer |
+| `scripts/selftest.sh` | 56 checks: masker, logger, fail-closed, hooks and snapshots, `mw new` with no terminal, doctor, installer (with and without systemd) |
 | `templates/tmux.conf` | The logging hooks and window settings |
 | `templates/launchd-snap.xml` | The macOS LaunchAgent (install.sh fills it in) |
 | `templates/mirrored-workspace-snap.service`, `.timer` | The Linux systemd user units |
