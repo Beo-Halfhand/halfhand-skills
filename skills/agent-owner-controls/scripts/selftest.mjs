@@ -14,7 +14,7 @@ import { openAsk, resolveAsk, closeAsk, approvalFrom, outcomeLine, listAsks, ans
 import { fileHandback, ingestHandbacks, recentSelf, promptBlock } from './lib/handback.mjs';
 import { createLimits, policyProblems } from './lib/limits.mjs';
 import { makeGate } from './lib/gate.mjs';
-import { readLines, writeJson } from './lib/files.mjs';
+import { readLines, writeJson, appendLine, previousPart } from './lib/files.mjs';
 import { readPause as starterReadPause } from '../../city-driver-starter/scripts/driver.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -347,6 +347,35 @@ try {
     const hb = await run(['handback', ev, '--by', 'race', '--pin', 'You', 'won', 'the', 'race.']);
     check('controls handback: files a pinned note', hb.code === 0 && readLines(ev).at(-1).pin && readLines(ev).at(-1).text === 'You won the race.');
     check('controls: an unknown command is a usage error (exit 2)', (await run(['nope'])).code === 2);
+  }
+  // ── logs stay small: refusals.jsonl and events.jsonl roll to <name>.1.jsonl ──
+  {
+    const d = tmp(), f = path.join(d, 'events.jsonl'), max = 2048;
+    for (let i = 0; i < 100; i++) appendLine(f, { at: new Date(Date.now() - (100 - i) * 1000).toISOString(), by: 't', text: `note ${i} `.padEnd(80, '.'), pin: false }, { maxBytes: max });
+    const sz = (x) => fs.statSync(x).size, all = readLines(f);
+    check('log rolls: past the size the older part becomes events.1.jsonl, both owner-only', fs.existsSync(previousPart(f)) && mode(previousPart(f)) === '600' && mode(f) === '600');
+    check('log rolls: each part stays near the limit (one older part kept, so about 2x at most)', sz(f) <= max + 200 && sz(previousPart(f)) <= max + 200 && fs.readdirSync(d).length === 2, fs.readdirSync(d).join(','));
+    check('log rolls: readers see both parts, oldest first, newest last', all.length > max / 120 && all.at(-1).text.startsWith('note 99 ') && all.every((x, i) => !i || Date.parse(x.at) > Date.parse(all[i - 1].at)));
+    process.env.CONTROLS_LOG_MAX_KB = '1';
+    const ev = path.join(d, 'hb', 'events.jsonl');
+    fileHandback(ev, 'race', 'You won the race.', { pin: true, now: Date.now() - 30 * 3_600_000 });
+    for (let i = 0; i < 12; i++) fileHandback(ev, 'tick', `You checked the queue, round ${i}.`.padEnd(120, ' '), { now: Date.now() - 40 * 3_600_000 });
+    const pinned = recentSelf(ev, { max: 50 }).some((l) => l.includes('You won the race.'));
+    check('handback: a pinned note that has rolled into events.1.jsonl is still in "recent self"', fs.existsSync(previousPart(ev)) && !fs.readFileSync(ev, 'utf8').includes('won the race') && pinned);
+    const L = path.join(d, 'lim'); fs.mkdirSync(L); policy(L, { spend: { perAction: 1 } });
+    const lim = createLimits(L); for (let i = 0; i < 30; i++) lim.check('buy', { amount: 5 });
+    const st = await run(['status', L]);
+    const inParts = readLines(path.join(L, 'refusals.jsonl')).length, inCurrent = fs.readFileSync(path.join(L, 'refusals.jsonl'), 'utf8').trim().split('\n').length;
+    const allCaps = readLines(path.join(L, 'refusals.jsonl')).every((x) => x.rule === 'cap'), doc = await run(['doctor', L]);
+    check('refusals.jsonl rolls too; status counts today across both parts; doctor shows the size', fs.existsSync(previousPart(path.join(L, 'refusals.jsonl'))) && inParts > inCurrent && new RegExp(`refusals: ${inParts} today`).test(st.out) && allCaps && /refusals.jsonl: \d+ KB in 2 parts at most \(rolls at 1 KB/.test(doc.out), st.out.split('\n').find((x) => x.startsWith('refusals')));
+    delete process.env.CONTROLS_LOG_MAX_KB;
+    // four writers at once, as events.jsonl allows: no torn line, no lock left behind, still bounded
+    const w = path.join(d, 'w', 'events.jsonl');
+    const writer = `import { appendLine } from ${JSON.stringify(new URL('./lib/files.mjs', import.meta.url).href)}; for (let i = 0; i < 300; i++) appendLine(${JSON.stringify(w)}, { at: new Date().toISOString(), by: 'w' + process.argv[1], text: 'x'.repeat(60), i }, { maxBytes: 4096 });`;
+    await Promise.all([1, 2, 3, 4].map((n) => new Promise((res) => execFile(process.execPath, ['--input-type=module', '-e', writer, String(n)], { timeout: 20_000 }, res))));
+    const raw = [w, previousPart(w)].map((x) => fs.readFileSync(x, 'utf8')).join('');
+    const torn = raw.split('\n').filter((l) => l.trim()).filter((l) => { try { JSON.parse(l); return false; } catch { return true; } }).length;
+    check('log rolls: four writers at once leave no torn line and no lock file, and stay bounded', torn === 0 && !fs.existsSync(`${w}.roll`) && fs.statSync(w).size < 4096 * 2 && fs.statSync(previousPart(w)).size < 4096 * 2, `torn=${torn}`);
   }
 } finally {
   for (const d of TEMPS) fs.rmSync(d, { recursive: true, force: true });

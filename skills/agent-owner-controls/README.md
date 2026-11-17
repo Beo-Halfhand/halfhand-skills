@@ -13,7 +13,7 @@ Teaches an AI agent to give an agent's owner four controls through plain files: 
 | `scripts/lib/files.mjs` | Atomic, owner-only file writes; JSON lines |
 | `scripts/controls.mjs` | The owner's command line: `pause`, `stop`, `start`, `unfreeze`, `status`, `asks`, `answer`, `handback`, `rogue`, `doctor` |
 | `scripts/demo.mjs` | One made-up agent and owner, all four controls, about 20 seconds |
-| `scripts/selftest.mjs` | 112 checks, including each forced refusal and the shared formats against fleet-dashboard and city-driver-starter |
+| `scripts/selftest.mjs` | 118 checks, including each forced refusal, log rolling and the shared formats against fleet-dashboard and city-driver-starter |
 | `scripts/policy.example.json` | A policy to copy (starts in shadow mode) |
 | `references/protocol.md` | Every file, its one writer, its format; the order of a takeover |
 | `references/pause.md` | Pause with expiry, both sides, and the lessons behind each rule |

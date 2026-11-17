@@ -2,6 +2,8 @@
 
 Everything is a plain file, so any program in any language can take part. **Every file has exactly one writer**; the only file with several writers (`events.jsonl`) is append-only. Write whole files atomically (a temp file, then rename) and keep them owner-only (600 files, 700 folders).
 
+**Logs stay small.** `refusals.jsonl` and `events.jsonl` roll to `refusals.1.jsonl` / `events.1.jsonl` once they pass `CONTROLS_LOG_MAX_KB` (default 1024), replacing the older part, so each log holds about 2 MB at most. Whoever's append crosses the size does the roll, under an exclusive `<name>.roll` lock, so two writers can't roll at once and no line is torn. Readers read the `.1` part first, then the current one. A program in another language can append without rolling; the next append through `files.mjs` rolls it.
+
 ## The agent's folder
 
 | File | Writer | Format | Meaning |

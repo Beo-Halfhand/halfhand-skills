@@ -13,13 +13,14 @@
 //   node controls.mjs doctor <agent dir>                          checks that the controls can actually hold
 //
 // <agent dir> holds PAUSE, RELEASED, STOP, policy.json, spent.json, refusals.jsonl. Exit 2 on a usage error.
+// Logs (refusals.jsonl, events.jsonl) roll to <name>.1.jsonl past CONTROLS_LOG_MAX_KB (default 1024).
 import fs from 'node:fs';
 import path from 'node:path';
 import { readPause, hold, letGo, pauseFile, releasedFile } from './lib/pause.mjs';
 import { listAsks, answerAsk, openAsks } from './lib/asks.mjs';
 import { fileHandback, recentSelf } from './lib/handback.mjs';
 import { createLimits } from './lib/limits.mjs';
-import { readJson, readLines, writeJson } from './lib/files.mjs';
+import { readJson, readLines, writeJson, previousPart, logMaxBytes } from './lib/files.mjs';
 
 const [cmd, ...args] = process.argv.slice(2);
 const usage = (msg) => { if (msg) console.error(msg); console.error('usage: see the top of controls.mjs, or node controls.mjs help'); process.exit(2); };
@@ -67,11 +68,12 @@ async function main() {
       const dir = needDir(args[0]);
       const p = readPause(dir), r = readJson(releasedFile(dir)), L = createLimits(dir).status();
       console.log(`pause:    ${!p ? 'none' : p.expired ? `expired at ${when(p.until)} (by ${p.by}); not paused` : `PAUSED by ${p.by} until ${p.until ? when(p.until) : 'removed (no end time)'}${p.stale ? ', STALE' : ''}`}`);
-      console.log(`released: ${!r ? 'no' : r.for === p?.at ? `yes, for this pause (work ${r.stoppedWork ? 'stopped' : 'not running'}, control ${r.released === false ? 'NOT handed back' : 'handed back'})` : 'an old RELEASED, not for the current pause'}`);
+      console.log(`released: ${!r ? 'no' : r.for === p?.at ? `yes, for this pause (work ${r.stoppedWork ? 'stopped' : 'not running'}, control ${r.released === false ? 'NOT handed over' : 'handed over'})` : 'an old RELEASED, not for the current pause'}`);
       console.log(`limits:   ${L.policyOk ? `mode ${L.mode}, ${L.stop ? 'STOP on' : 'no STOP'}${L.frozen ? `, FROZEN (${L.frozen})` : ''}, spent today ${L.spentToday}${L.caps.perDay !== undefined ? `/${L.caps.perDay}` : ''}, this week ${L.spentWeek}${L.caps.perWeek !== undefined ? `/${L.caps.perWeek}` : ''} (${L.tz})` : `REFUSING EVERYTHING: ${L.problems.join('; ')}`}`);
-      const today = new Date().toISOString().slice(0, 10);
-      const no = readLines(path.join(dir, 'refusals.jsonl')).filter((x) => String(x.at).startsWith(today));
-      console.log(`refusals: ${no.length} today (UTC)${no.length ? `; last: ${no.at(-1).action} (${no.at(-1).rule}) ${no.at(-1).reason}` : ''}`);
+      const tz = L.tz || 'UTC', dayOf = (t) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t)); } catch { return ''; } };
+      const today = dayOf(Date.now());
+      const no = readLines(path.join(dir, 'refusals.jsonl')).filter((x) => dayOf(x.at) === today);
+      console.log(`refusals: ${no.length} today (${tz})${no.length ? `; last: ${no.at(-1).action} (${no.at(-1).rule}) ${no.at(-1).reason}` : ''}`);
       if (asks) console.log(`asks:     ${openAsks(asks).filter((a) => !fs.existsSync(path.join(asks, 'answers', `${a.id}.json`))).length} waiting for you`);
       if (events) { const lines = recentSelf(events); console.log(`recent:   ${lines.length ? `\n  ${lines.join('\n  ')}` : 'nothing in the last day'}`); }
       return 0;
@@ -114,7 +116,7 @@ async function main() {
     }
     case 'doctor': return doctor(needDir(args[0]));
     case 'help': case '--help': case '-h': case undefined:
-      console.log(fs.readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 16).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); return cmd ? 0 : 2;
+      console.log(fs.readFileSync(new URL(import.meta.url), 'utf8').split("\n").slice(1, 16).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); return cmd ? 0 : 2;
     default: usage(`unknown command ${cmd}`);
   }
 }
@@ -138,8 +140,13 @@ function doctor(dir) {
   if (p?.badUntil) wa('PAUSE has an "until" that is not a date: it is treated as no end time');
   if (p?.expired) ok(`PAUSE by ${p.by} has expired; the driver should be running again`);
   if (r && (!p || p.expired) ) wa('RELEASED is there but there is no live PAUSE: the driver may not be running (it deletes RELEASED when it resumes)');
+  const kb = (f) => { try { return Math.ceil(fs.statSync(f).size / 1024); } catch { return 0; } };
+  const log = path.join(dir, 'refusals.jsonl');
+  ok(`refusals.jsonl: ${kb(log) + kb(previousPart(log))} KB in 2 parts at most (rolls at ${logMaxBytes() / 1024} KB; CONTROLS_LOG_MAX_KB to change)`);
   const c = createLimits(dir).check('rogue_test', { amount: 1e12, to: '(rogue counterparty)', after: {} });
-  if (c.ok) no(`the rogue test PASSED the limits${c.wouldRefuse ? ' (shadow mode)' : ''}: these limits don't stop anything`); else ok(`rogue test refused (${c.rule})`);
+  if (c.ok) no(`the rogue test PASSED the limits${c.wouldRefuse ? ' (shadow mode)' : ''}: these limits don't stop anything`);
+  else if (c.rule === 'stop') wa('rogue test refused by STOP only: the policy itself was not tested. Run doctor again after "start"');
+  else ok(`rogue test refused (${c.rule})`);
   console.log(`doctor: ${bad} problem(s), ${warn} warning(s)`);
   return bad ? 1 : 0;
 }

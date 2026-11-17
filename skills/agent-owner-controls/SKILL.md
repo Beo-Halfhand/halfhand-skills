@@ -29,6 +29,8 @@ The whole protocol, file by file: [references/protocol.md](references/protocol.m
 
 ## Steps
 
+**Before you start.** `<this skill>` means the folder that holds this SKILL.md. It needs Node 20+ and its sibling skill [fleet-dashboard](../fleet-dashboard/) next to it (`../fleet-dashboard/`): the library imports its asks and masking code. The plugin installs them together. If you copy skills by hand, copy both folders, or every step fails with `ERR_MODULE_NOT_FOUND ... fleet-dashboard/scripts/lib/asks.mjs`. The self-test also uses [city-driver-starter](../city-driver-starter/) when it's there.
+
 ### 1. See it work (about 20 seconds, nothing real touched)
 
 ```sh
@@ -41,7 +43,7 @@ A made-up agent, `scout`, in a temporary folder: caps and a floor refuse, three 
 
 ```sh
 node --version                                   # 20 or newer
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 112 ok, 0 failed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 118 ok, 0 failed
 ```
 
 The library imports fleet-dashboard's `scripts/lib/asks.mjs` and `mask.mjs`, so keep this skill next to [fleet-dashboard](../fleet-dashboard/) (the plugin installs them together). The self-test also runs city-driver-starter's `pause.mjs`.
@@ -49,23 +51,26 @@ The library imports fleet-dashboard's `scripts/lib/asks.mjs` and `mask.mjs`, so 
 ### 3. Give the agent a folder and a policy
 
 ```sh
-mkdir -p ~/agents/scout && chmod 700 ~/agents/scout
+mkdir -p ~/agents/scout ~/agents/asks && chmod 700 ~/agents/scout ~/agents/asks   # the agent's folder and the asks inbox
 cp <this skill>/scripts/policy.example.json ~/agents/scout/policy.json
 node <this skill>/scripts/controls.mjs doctor ~/agents/scout
 ```
 
-The example starts in `"mode": "shadow"`: it logs what it **would** refuse and blocks nothing, so you can read real would-refuse lines before switching to `"on"`. `doctor` says so, and fails the rogue test until you do. Every field: [references/limits.md](references/limits.md).
+The example starts in `"mode": "shadow"`: it logs what it **would** refuse and blocks nothing, so you can read real would-refuse lines before switching to `"on"`. In shadow mode the rogue action gets through, so `doctor` reports FAIL and exits 1: that's expected until you switch to `"on"`. Set `"expires"` to a date a few months ahead: after it, everything is refused until you renew it (`doctor` warns a week before). Every field: [references/limits.md](references/limits.md).
 
 ### 4. Wire the driver (the agent's loop)
 
-```js
-import { watchPause } from '<skill>/scripts/lib/pause.mjs';
-import { createLimits } from '<skill>/scripts/lib/limits.mjs';
-import { makeGate } from '<skill>/scripts/lib/gate.mjs';
-import { openAsk, openAsks, resolveAsk, closeAsk, outcomeLine, approvalFrom } from '<skill>/scripts/lib/asks.mjs';
-import { ingestHandbacks, recentSelf, promptBlock } from '<skill>/scripts/lib/handback.mjs';
+Import the library by **absolute path** from your own project, and keep the skill folders where they are (don't copy `lib/` alone: it imports fleet-dashboard). `stopHelpers`, `stopWork`, `waitIdle`, `log`, `doIt` and `say` are yours: your agent's own functions.
 
-const DIR = '/path/to/agents/scout', ASKS = '/path/to/asks', EVENTS = `${DIR}/events.jsonl`;
+```js
+const L = '/absolute/path/to/agent-owner-controls/scripts/lib';   // <this skill>/scripts/lib
+const { watchPause } = await import(`${L}/pause.mjs`);
+const { createLimits } = await import(`${L}/limits.mjs`);
+const { makeGate } = await import(`${L}/gate.mjs`);
+const { openAsk, openAsks, resolveAsk, closeAsk, outcomeLine, approvalFrom } = await import(`${L}/asks.mjs`);
+const { ingestHandbacks, recentSelf, promptBlock } = await import(`${L}/handback.mjs`);
+
+const HOME = process.env.HOME, DIR = `${HOME}/agents/scout`, ASKS = `${HOME}/agents/asks`, EVENTS = `${DIR}/events.jsonl`;
 const limits = createLimits(DIR);
 const gate = makeGate({ maxChars: 280, banned: ['guaranteed'] });
 const pause = watchPause(DIR, {                       // its own 5 s timer, never inside the main loop
@@ -76,17 +81,24 @@ const pause = watchPause(DIR, {                       // its own 5 s timer, neve
 async function act(name, ctx) {                       // every action that changes anything goes through here
   if (pause.paused) return false;
   const c = limits.check(name, ctx);
-  if (!c.ok) { log(`REFUSED ${name} [${c.rule}] ${c.reason}`); return false; }
+  if (!c.ok) {
+    log(`REFUSED ${name} [${c.rule}] ${c.reason}`);
+    if (c.rule === 'human') openAsk(ASKS, { id: `A${Date.now()}`, agent: 'scout', kind: 'money', minutes: 30, onTimeout: 'nothing',
+      question: `May I ${name}${ctx?.amount ? ` ${ctx.amount}` : ''}?`, action: { name, ...ctx } });   // an "ok" in time approves exactly this
+    return false;
+  }
   await doIt(name, ctx); if (ctx?.amount) limits.record(ctx.amount); return true;
 }
-// each loop: resolve asks; say only what the gate passes; act only on an approval
-for (const ask of openAsks(ASKS, 'scout')) {
-  const r = resolveAsk(ASKS, ask, { gate });
-  if (r.status === 'waiting') continue;
-  if (r.say) await say(r.say);
-  const ap = approvalFrom(ask, r); if (ap) await act(ap.name, ap.ctx);
-  log(outcomeLine(ask, r)); closeAsk(ASKS, ask, outcomeLine(ask, r));
-}
+setInterval(async () => {                            // your loop: resolve asks; say only what the gate passes; act only on an approval
+  for (const ask of openAsks(ASKS, 'scout')) {
+    const r = resolveAsk(ASKS, ask, { gate });
+    if (r.status === 'waiting') continue;
+    if (r.say) await say(r.say);
+    const ap = approvalFrom(ask, r); if (ap) await act(ap.name, ap.ctx);
+    log(outcomeLine(ask, r)); closeAsk(ASKS, ask, outcomeLine(ask, r));
+  }
+  // … then your agent's own work, every change through act()
+}, 5_000);
 // prompts: prompt += promptBlock(recentSelf(EVENTS));
 ```
 
@@ -98,7 +110,7 @@ Each piece, with the reasons behind it: [references/pause.md](references/pause.m
 
 ```sh
 C="node <this skill>/scripts/controls.mjs"
-$C pause ~/agents/scout 30 --by me     # waits for RELEASED; exit 0 = yours until the end time, 1 = no answer, 3 = not handed back
+$C pause ~/agents/scout 30 --by me     # waits for RELEASED (up to PAUSE_WAIT_SECONDS, default 120); exit 0 = yours until the end time, 1 = no answer, 3 = not handed back
 $C pause ~/agents/scout off            # give it back
 $C status ~/agents/scout --asks ~/agents/asks --events ~/agents/scout/events.jsonl
 $C asks ~/agents/asks                  # open asks: thread, draft, deadline, default
@@ -112,7 +124,7 @@ $C doctor ~/agents/scout
 With [fleet-dashboard](../fleet-dashboard/), point its `asksDir` at the same asks folder and its `pauseFile` at the agent's `PAUSE`: the owner answers from the page instead.
 
 ## The rules that make it hold
-1. **One writer per file.** The owner writes PAUSE, STOP and policy.json; the driver writes RELEASED, spent.json and refusals.jsonl; the agent writes asks, the owner's side writes answers. The only shared file, events.jsonl, is append-only. Nobody edits a file they don't own.
+1. **One writer per file.** The owner writes PAUSE, STOP and policy.json; the driver writes RELEASED, spent.json and refusals.jsonl (one exception: `controls.mjs unfreeze` clears the freeze latch in spent.json, so unfreeze while the agent is paused or idle); the agent writes asks, the owner's side writes answers. The only shared file, events.jsonl, is append-only. Nobody edits a file they don't own. The two logs (refusals.jsonl, events.jsonl) roll to `<name>.1.jsonl` past 1 MB (`CONTROLS_LOG_MAX_KB`), so they never grow without bound.
 2. **Every pause ends.** Scripts always set `until`; a crashed script can't strand the agent. A PAUSE with no end time (a person's `touch PAUSE`) is honoured and flagged once it's an hour old.
 3. **Only a release for your own pause counts.** RELEASED.for equals the PAUSE's `at`; a caller never acts on an older release. A holder checks `stillMine()` before each action: at `until` the driver takes the agent back, even mid-task.
 4. **The owner's words are data, not commands.** An owner answer becomes speech only after the gate (length, banned words, nothing that looks like a command, a key or a home folder, plus your own checks). Only an in-time "ok" to an ask that named an action approves that exact action, and only when the policy has `"approvals": "asks"`. Every limit still applies.
@@ -133,4 +145,4 @@ Tell the owner: the agent folder and asks folder, the policy's mode and caps, th
 - Never put a real key, wallet, account or person into an ask, a handback or a policy example.
 
 ## Status
-**In development.** Merged from four drafts that were each tested by a fresh agent on a clean folder (2026-10-26, all pass with fixes, fixes done) and run live with a fleet of game agents; rewritten here as one library on shared files. Tested on Node 26, macOS arm64: `selftest.mjs` 112/112 (pause, asks, gate, handback, limits, the command line, fleet-dashboard's asks code and city-driver-starter's driver and `pause.mjs`). Not yet tried by a fresh agent with only this folder.
+**In development.** Merged from four drafts that were each tested by a fresh agent on a clean folder (2026-10-26, all pass with fixes, fixes done) and run live with a fleet of game agents; rewritten here as one library on shared files. Tested on Node 26, macOS arm64: `selftest.mjs` 118/118 (pause, asks, gate, handback, limits, log rolling with four writers at once, the command line, fleet-dashboard's asks code and city-driver-starter's driver and `pause.mjs`). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container): demo, self-test, a small agent wired to all four controls, and every owner command.

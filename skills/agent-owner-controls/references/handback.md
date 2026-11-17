@@ -21,7 +21,7 @@ node controls.mjs handback ~/agents/scout/events.jsonl --by race-script --pin "Y
 - **One line, at most 300 characters, no ids, paths or keys.** It may be said to strangers. `fileHandback` masks keys and home folders and clamps the length anyway.
 - **`pin`** keeps it 72 hours instead of 24 (a win, a milestone).
 - **File before you let go**, not after: once PAUSE is gone the loop may already be building its next prompt. File in your Ctrl-C path too, even if it's just "You were interrupted during the race."
-- `events.jsonl` is append-only: one whole line per write, nobody edits or deletes lines.
+- `events.jsonl` is append-only: one whole line per write, nobody edits lines. Past `CONTROLS_LOG_MAX_KB` (default 1024) it rolls to `events.1.jsonl`, replacing the older part, and readers (`recentSelf`, `ingestHandbacks`) read both parts, so a pinned note survives a roll.
 
 ## Reading notes in (the driver)
 
