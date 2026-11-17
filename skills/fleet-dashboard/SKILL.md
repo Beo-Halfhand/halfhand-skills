@@ -41,18 +41,21 @@ node --version                                   # 20 or newer
 node <this skill>/scripts/deck.mjs --demo        # then open http://localhost:7700
 ```
 
+`<this skill>` is the folder that holds this SKILL.md. No browser (a server, an agent)? `curl -s http://localhost:7700/api/fleet` returns what the page draws: each agent's `light`, `why`, `doing` and `place` ([references/api.md](references/api.md)).
+
 The demo builds a made-up crew of 8 agents in an invented harbour town, in a temporary folder, with 26 hours of history. Everything in it is invented. It shows all three lights: one agent paused, one with warnings, one gone silent. It also has two open asks and one agent whose history starts late. Ctrl-C ends it and removes the folder. `--port 7800` picks another port.
 
 Run the self-test once on the machine it will live on:
 
 ```sh
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 138 ok, 0 failed (about 5 seconds)
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 140 ok, 0 failed on macOS (about 5 seconds)
+                                                 # Linux: 139, or 140 when systemd-analyze is installed
 ```
 
 ### 2. Copy it out and write the config
 
 ```sh
-cp -R <this skill>/scripts ~/fleet-dashboard && cd ~/fleet-dashboard
+mkdir -p ~/fleet-dashboard && cp -R <this skill>/scripts/. ~/fleet-dashboard/ && cd ~/fleet-dashboard
 cp fleet.example.json fleet.json
 ```
 
@@ -94,7 +97,9 @@ Fix every ✗ before going on. The reasons are the adapter's own words, masked.
 node deck.mjs --config fleet.json                # http://localhost:7700  ·  phone layout: /m
 ```
 
-The first graphs need two readings (one interval). History is kept `keepDays` (default 7) in `dataDir/history/`, one file per day.
+It worked if `curl -s http://localhost:7700/api/health` says `"ok":true`. The sampler reads every `sampleMinutes` (default 5), so a new agent shows yellow "no reading yet" until then: `node deck.mjs --config fleet.json --once` takes a reading now. The first graphs need two readings (one interval). History is kept `keepDays` (default 7) in `dataDir/history/`, one file per day.
+
+Stop it with Ctrl-C, or `kill <pid>` if it runs in the background.
 
 ### 5. Keep it running (always on)
 
@@ -110,8 +115,10 @@ node install.mjs --systemd --config ~/fleet-dashboard/fleet.json --start    # ~/
 loginctl enable-linger                                                      # keep it running while you're logged out
 
 # stop and remove (prints the commands; your data stays)
-node install.mjs --launchd --uninstall
+node install.mjs --launchd --uninstall      # or --systemd --uninstall
 ```
+
+**No systemd** (a container, WSL, a minimal VM): `--start` says so and writes nothing. Run it in the background instead, with a `@reboot` cron line to bring it back: [references/always-on.md](references/always-on.md#no-service-manager). The systemd unit is checked with `systemd-analyze verify`; it hasn't yet been run as a live service.
 
 The service runs the copy in `~/fleet-dashboard`, not the one inside this skill, so updating the skill doesn't change a running dashboard. After you edit `fleet.json`, restart the service. Details and logs: [references/always-on.md](references/always-on.md).
 
@@ -127,7 +134,7 @@ Any other Host gets 421, and a login that isn't listed gets 403. See [references
 
 ### 7. Optional: asks
 
-Set `"asksDir"`. An agent that wants your decision writes `<asksDir>/<id>.json`. The dashboard shows it under "Asks for you". Your answer becomes `<asksDir>/answers/<id>.json`, written once and never changed. The agent reads the answer and **applies its own rules** before acting on it. The file format and an example agent loop are in [references/asks.md](references/asks.md).
+Set `"asksDir"` (relative to `fleet.json`, or absolute). The dashboard creates it (mode 700) when it starts; give your agents its **absolute** path, and run them as the same user as the dashboard. An agent that wants your decision writes `<asksDir>/<id>.json`. The dashboard shows it under "Asks for you". Your answer becomes `<asksDir>/answers/<id>.json`, written once and never changed. The agent reads the answer and **applies its own rules** before acting on it. The file format and an example agent loop are in [references/asks.md](references/asks.md).
 
 ## Safety rules
 
@@ -161,4 +168,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 138/138 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). systemd unit generated and unit-tested, not yet run on a Linux machine. Not yet tried by a fresh agent with only this folder. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 140/140 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip. The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.

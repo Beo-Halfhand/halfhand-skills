@@ -299,7 +299,18 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   }
   const u = systemdUnit({ ...o, config: '/srv/x/fleet 100%.json' });
   check('systemd: arguments quoted and % escaped', u.includes('--config "/srv/x/fleet 100%%.json"') && /Restart=always/.test(u) && /NoNewPrivileges=yes/.test(u));
+  const uw = systemdUnit({ ...o, workdir: '/srv/my fleet 100%' });
+  check('systemd: WorkingDirectory is not quoted (systemd rejects a quoted path); spaces and % escaped', uw.includes('WorkingDirectory=/srv/my\\x20fleet\\x20100%%\n'), uw.split('\n').find((l) => l.startsWith('WorkingDirectory')));
+  let sdOk = null; try { execFileSync('systemd-analyze', ['--version'], { stdio: 'ignore' }); sdOk = true; } catch { /* not on this machine */ }
+  if (sdOk) {
+    const dd = tmp('fd-unit-'), wd = path.join(dd, 'my fleet'); fs.mkdirSync(wd); for (const f of ['deck.mjs', 'fleet.json']) fs.writeFileSync(path.join(wd, f), '');
+    const uf = path.join(dd, 'fleet-dashboard.service'); fs.writeFileSync(uf, systemdUnit({ ...o, node: process.execPath, deck: path.join(wd, 'deck.mjs'), config: path.join(wd, 'fleet.json'), workdir: wd }));
+    let verr = ''; try { execFileSync('systemd-analyze', ['verify', uf], { stdio: 'pipe' }); } catch (e) { verr = String(e.stderr || e.message); }
+    check('systemd: systemd-analyze verify accepts the unit (a folder name with a space)', !/fleet-dashboard\.service/.test(verr), verr.split('\n')[0]);
+  }
   const inst = await new Promise((resolve) => execFile(process.execPath, [path.join(HERE, 'install.mjs'), '--systemd', '--config', path.join(HERE, 'fleet.example.json')], (err, stdout) => resolve({ code: err ? err.code : 0, out: stdout })));
+  const fh = tmp('fd-home-'), noSd = await new Promise((resolve) => execFile(process.execPath, [path.join(HERE, 'install.mjs'), '--systemd', '--config', path.join(HERE, 'fleet.example.json'), '--start'], { env: { ...process.env, HOME: fh, PATH: path.dirname(process.execPath) } }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, err: stderr })));
+  check('install.mjs --systemd --start with no systemd: exit 1, says what to do, writes nothing', noSd.code === 1 && /No service manager/.test(noSd.err) && fs.readdirSync(fh).length === 0, `${noSd.code} ${noSd.err}`);
   check('install.mjs without --write only prints (writes nothing)', inst.code === 0 && /# would write/.test(inst.out) && /ExecStart=/.test(inst.out));
 }
 

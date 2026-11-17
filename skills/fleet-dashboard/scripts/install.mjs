@@ -18,6 +18,8 @@ import { loadConfig } from './lib/config.mjs';
 
 const DECK = path.join(path.dirname(fileURLToPath(import.meta.url)), 'deck.mjs');
 const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// WorkingDirectory= takes no quotes (a quoted path is "not absolute", a fatal unit error): escape instead.
+const sdPath = (s) => String(s).replace(/\\/g, '\\\\').replace(/ /g, '\\x20').replace(/%/g, '%%');
 const sdq = (s) => `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')}"`;   // systemd: quoted, % escaped
 
 export function launchdPlist({ label, node, deck, config, workdir, out, pathEnv }) {
@@ -46,7 +48,7 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStart=${sdq(node)} ${sdq(deck)} --config ${sdq(config)}
-WorkingDirectory=${sdq(workdir)}
+WorkingDirectory=${sdPath(workdir)}
 Environment=${sdq(`PATH=${pathEnv}`)}
 Restart=always
 RestartSec=30
@@ -61,7 +63,7 @@ WantedBy=default.target
 function main() {
   const a = process.argv.slice(2), has = (f) => a.includes(f), val = (f) => (a.includes(f) ? a[a.indexOf(f) + 1] : null);
   const kind = has('--launchd') ? 'launchd' : has('--systemd') ? 'systemd' : null;
-  if (!kind || has('--help')) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 11).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(kind ? 0 : 2); }
+  if (!kind || has('--help')) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 10).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(kind ? 0 : 2); }
   if (process.getuid?.() === 0) { console.error('run this as your own user, not root: the dashboard needs no special rights'); process.exit(2); }
   const name = val('--name') ?? 'fleet-dashboard';
   if (!/^[a-z0-9][a-z0-9.-]{0,40}$/.test(name)) { console.error('--name: lowercase letters, digits, dots and dashes'); process.exit(2); }
@@ -89,6 +91,12 @@ function main() {
     console.log(`# would write ${target}\n# (add --write to write it, --start to write it and start it)\n`);
     process.stdout.write(text); return;
   }
+  if (kind === 'systemd' && has('--start')) {
+    try { execFileSync('systemctl', ['--user', 'show-environment'], { stdio: 'ignore' }); } catch {
+      console.error('install.mjs: no systemd user manager here (a container, WSL or a minimal VM), so nothing was written.\nRun it in the background instead: see references/always-on.md, "No service manager".');
+      process.exit(1);
+    }
+  }
   if (fs.existsSync(target) && !fs.readFileSync(target, 'utf8').includes(DECK)) { console.error(`${target} exists and isn't ours; pick another --name`); process.exit(1); }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.mkdirSync(r.config.dataDir, { recursive: true, mode: 0o700 });
@@ -112,4 +120,7 @@ function main() {
   console.log(`open http://localhost:${r.config.port} (give it a few seconds)`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+// Run only when started directly. Node resolves symlinks for the module (/tmp on macOS, a linked folder) but not
+// in argv[1], so compare real paths, or a linked path would silently do nothing.
+const startedDirectly = () => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+if (process.argv[1] && startedDirectly()) main();

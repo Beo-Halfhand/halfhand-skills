@@ -11,6 +11,12 @@ For building on top: a status bar, a script that posts a daily summary, another 
 | `GET /api/asks` | `{ enabled, max, asks: [{ id, agent, question, draft, at, open }] }` |
 | `POST /api/ask` | `{ id, verdict: "ok" \| "skip" \| "own", text? }`. Needs header `X-Deck: 1` and, if the browser sends `Origin`, the same origin |
 
+Answering from a terminal, without the page (once per ask; a second answer gets 409):
+
+```sh
+curl -s -X POST -H 'X-Deck: 1' -H 'Content-Type: application/json' -d '{"id":"A1","verdict":"ok"}' http://localhost:7700/api/ask
+```
+
 ## /api/fleet
 
 ```json

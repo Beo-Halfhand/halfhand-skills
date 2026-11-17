@@ -37,6 +37,23 @@ This writes `~/.config/systemd/user/fleet-dashboard.service` with `Restart=alway
 | Its output | `journalctl --user -u fleet-dashboard -e`, and `<dataDir>/deck.log` |
 | Stop and remove | `node install.mjs --systemd --uninstall` |
 
+## No service manager
+
+In a container, WSL or a minimal VM there's no launchd or systemd user manager (`install.mjs --systemd --start` checks and stops). Run it in the background and log to the data folder:
+
+```sh
+cd ~/fleet-dashboard
+nohup node deck.mjs --config fleet.json >> fleet-data/service.out 2>&1 &   # use your dataDir
+echo $! > fleet-data/deck.pid
+curl -s http://localhost:7700/api/health                                 # "ok": true
+```
+
+| Task | Command |
+|---|---|
+| Stop | `kill "$(cat fleet-data/deck.pid)"` |
+| Start again after a reboot | `crontab -e`, add `@reboot cd $HOME/fleet-dashboard && node deck.mjs --config fleet.json >> fleet-data/service.out 2>&1` (use the full path to node if cron's PATH lacks it) |
+| Its output | `fleet-data/service.out` and `<dataDir>/deck.log` |
+
 ## Updating
 
 1. Copy the new `scripts/` over your copy (keep your `fleet.json` and `dataDir`).

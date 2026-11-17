@@ -51,5 +51,5 @@ export function answerTo(id) {
 ## Safety
 
 - Answering needs a click and a confirm on the page, a custom request header and the same origin, so a link or a form on another site can't answer for you.
-- The dashboard only writes inside `asksDir/answers/`, with owner-only permissions.
+- The dashboard only writes inside `asksDir/answers/`, with owner-only permissions (folder 700, files 600). So agents that read answers must run as the same user as the dashboard.
 - Keep `asksDir` outside any folder that syncs to other people.

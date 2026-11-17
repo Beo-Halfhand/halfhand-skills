@@ -38,7 +38,7 @@ function args(argv) {
 }
 
 function usage() {
-  console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 9).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+  console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 8).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
 }
 
 async function main() {
@@ -79,6 +79,7 @@ async function main() {
 
   if (o.once) { await round(config, { log }); process.exit(0); }
 
+  if (config.asksDir) fs.mkdirSync(config.asksDir, { recursive: true, mode: 0o700 });   // agents write here; make it before they try
   const records = makeReader(config.dataDir);
   const server = createServer({ config, records, version: VERSION, log });
   let sampler = null;
@@ -88,7 +89,7 @@ async function main() {
   });
   server.listen(config.port, '127.0.0.1', () => {
     log(`fleet-dashboard v${VERSION} on http://127.0.0.1:${config.port} · ${config.agents.length} agent(s) · sampler ${o.sampler ? `every ${config.sampleMinutes} min` : 'off'}${o.demo ? ' · DEMO (made-up data)' : ''}`);
-    if (!process.stdout.isTTY) return;
+    if (!process.stdout.isTTY) { console.log(`open http://localhost:${config.port} (phone layout: /m) · check: curl -s http://localhost:${config.port}/api/health`); return; }
     console.log(`\n  open  http://localhost:${config.port}        phone layout  http://localhost:${config.port}/m`);
     if (o.demo) console.log(`  demo files: ${o.keep ? demoDir : 'a temporary folder, removed when you press Ctrl-C (--keep keeps it)'}\n`);
   });
@@ -102,4 +103,7 @@ async function main() {
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });
+// Run only when started directly. Node resolves symlinks for the module (/tmp on macOS, a linked folder) but not
+// in argv[1], so compare real paths, or a linked path would silently do nothing.
+const startedDirectly = () => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+if (process.argv[1] && startedDirectly()) main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });

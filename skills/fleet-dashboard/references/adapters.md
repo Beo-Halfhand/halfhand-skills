@@ -51,7 +51,7 @@ console.log(JSON.stringify({ xp: { tasks: s.tasksDone }, doing: { label: s.curre
 "file": { "path": "~/agents/notes/status.json", "maxAgeMinutes": 20 }
 ```
 
-The agent rewrites the file whenever it likes (write to a temp file and rename, so the dashboard never reads half a file). A file older than `maxAgeMinutes` counts as a failed read, so an agent that stopped writing doesn't look fine.
+The file holds one Sample: the same JSON object the `command` adapter reads, e.g. `{ "doing": { "label": "taking notes" }, "position": { "space": "desk", "name": "Desk" } }` (every field optional; the Sample shape is above). The agent rewrites the file whenever it likes (write to a temp file and rename, so the dashboard never reads half a file). A file older than `maxAgeMinutes` counts as a failed read, so an agent that stopped writing doesn't look fine.
 
 ### `midnight-city`
 
