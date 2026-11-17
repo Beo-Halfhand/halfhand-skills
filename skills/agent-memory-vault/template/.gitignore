@@ -1,0 +1,27 @@
+# Secret-shaped files never enter history (they shouldn't be in the vault at all).
+.env*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*seed*
+*mnemonic*
+*wallet*.json
+*credentials*
+*secret*
+# Binaries stay out of git (they still sync with the folder).
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+*.mp4
+*.mov
+# Editor and OS noise
+.DS_Store
+.obsidian/workspace*.json
+.trash/
