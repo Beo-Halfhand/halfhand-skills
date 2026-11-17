@@ -63,13 +63,42 @@ for (const f of files.filter((f) => f.endsWith('.md'))) {
 const LEAK_SCRIPT = 'skills/prepublish-leak-check/scripts/leak-check.mjs';
 const { RULES, FORBIDDEN, termsFrom } = await import(new URL(`../${LEAK_SCRIPT}`, import.meta.url));
 const extra = termsFrom(process.env.LEAK_TERMS);
+
+// Documented placeholders (approved by the repo owner, 2026-11-17). The mirrored-workspace skill uses one
+// mesh-VPN product as its worked example, so a few lines name the product and a placeholder network name.
+// Rules of this allowlist:
+//   - exact file paths and exact literal strings only: no regex, no wildcard
+//   - only the 'private network' rule; private terms (LEAK_TERMS) and every other rule still apply
+//   - a line passes only if the rule stops matching once these literal strings are cut out, so a real
+//     network name, machine name or IP on the same line still fails
+//   - each file has a maximum number of excused lines; one more is a problem, not a pass
+// The two strings are assembled from parts so this file holds no text the leak-check skill would flag.
+const MESH_NAME = ['Tail', 'scale'].join('');
+const MESH_PLACEHOLDER = ['always-on.your-tailnet', 'ts', 'net'].join('.');
+const PLACEHOLDERS = [
+  { file: 'skills/mirrored-workspace/references/private-network.md', rule: 'private network', strings: [MESH_NAME, MESH_PLACEHOLDER], maxLines: 4 },
+  { file: 'skills/mirrored-workspace/SKILL.md', rule: 'private network', strings: [MESH_NAME], maxLines: 1 },
+];
+const excusedCount = new Map();
+const excused = (f, rule, re, line) => {
+  const a = PLACEHOLDERS.find((p) => p.file === f && p.rule === rule);
+  if (!a) return false;
+  const rest = a.strings.reduce((l, s) => l.split(s).join(' '), line);
+  if (rest === line || re.test(rest)) return false;
+  excusedCount.set(f, (excusedCount.get(f) ?? 0) + 1);
+  return true;
+};
 for (const f of files) {
   if (f === SELF || f === LEAK_SCRIPT || f === 'LICENSE') continue;
   const buf = fs.readFileSync(path.join(ROOT, f));
   if (buf.includes(0)) continue; // binary
   buf.toString('utf8').split('\n').forEach((line, i) => {
-    for (const [rule, re] of [...RULES, ...extra]) if (re.test(line)) bad(`${f}:${i + 1}`, rule);
+    for (const [rule, re] of [...RULES, ...extra]) if (re.test(line) && !excused(f, rule, re, line)) bad(`${f}:${i + 1}`, rule);
   });
+}
+for (const a of PLACEHOLDERS) {
+  const n = excusedCount.get(a.file) ?? 0;
+  if (n > a.maxLines) bad(a.file, `${n} lines use the documented placeholders, more than the ${a.maxLines} allowed`);
 }
 for (const f of files) if (FORBIDDEN.test(f)) bad(f, 'file type that must not be published');
 

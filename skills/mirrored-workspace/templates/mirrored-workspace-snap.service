@@ -1,0 +1,9 @@
+# mirrored-workspace snapper for Linux (systemd user unit). install.sh fills in the placeholders and
+# saves it in ~/.config/systemd/user/. The timer next to it runs it every @EVERY@ seconds.
+[Unit]
+Description=mirrored-workspace: masked snapshot of every tmux pane
+
+[Service]
+Type=oneshot
+ExecStart=@MW@ snap
+Environment=PATH=@PATH@

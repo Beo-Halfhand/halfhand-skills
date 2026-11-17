@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# mw: mirrored workspace. One tmux session per job ("tab"), each logged to a folder an AI can
+# read, plus a snapshot of every pane refreshed by a scheduler. Everything written passes
+# through the masker first; if the masker can't run, nothing is written.
+#
+#   mw new <tab>          attach to tab, or create it with logging on (tmux new -A -s <tab>)
+#   mw ls                 tabs, panes, logging on/off, snapshot age
+#   mw snap [--loop]      write one snapshot of every pane (--loop: every MW_SNAP_EVERY seconds)
+#   mw log <tab>          (used by tmux pipe-pane) mask stdin and append to logs/<tab>-YYYYMMDD.log
+#   mw pipe-all           turn logging on for every pane that isn't logging (never toggles one off)
+#   mw mask               mask stdin to stdout (pipe anything through it)
+#   mw scrub <file|dir>   mask existing logs/snapshots in place; prints counts, never values
+#   mw prune              delete logs and stale snapshots older than MW_LOG_KEEP_DAYS
+#   mw doctor             check the setup: tools, folder safety, panes not logging, snapper, masker
+#
+# Settings (environment wins over the config file ~/.config/mirrored-workspace/config):
+#   MW_HOME            folder for logs/ and snapshots/      (default ~/mirrored-workspace)
+#   MW_TMUX            tmux binary                          (default: tmux on PATH)
+#   MW_TMUX_SOCKET     tmux -L socket name                  (default: tmux's default server)
+#   MW_SNAP_LINES      scrollback lines per snapshot        (default 400)
+#   MW_SNAP_EVERY      seconds between snapshots in --loop  (default 60)
+#   MW_SNAP_SKIP       space-separated tab names not to snapshot
+#   MW_LOG_KEEP_DAYS   days of logs to keep                 (default 14)
+#   MW_LOG_MAX_MB      size of one log part before the next (default 20)
+#   MW_MASK_EXTRA      file of extra regexes to mask, one per line (your hostnames, ids)
+#   MW_MASK_GENERIC    1 = also mask any 24+ char token mixing upper, lower and digits (default 1)
+set -uo pipefail
+
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/mirrored-workspace/config"
+# shellcheck disable=SC1090
+[ -f "$cfg" ] && . "$cfg"
+: "${MW_HOME:=$HOME/mirrored-workspace}"
+: "${MW_TMUX:=tmux}"
+: "${MW_TMUX_SOCKET:=}"
+: "${MW_SNAP_LINES:=400}"
+: "${MW_SNAP_EVERY:=60}"
+: "${MW_SNAP_SKIP:=}"
+: "${MW_LOG_KEEP_DAYS:=14}"
+: "${MW_LOG_MAX_MB:=20}"
+: "${MW_MASK_EXTRA:=}"
+: "${MW_MASK_GENERIC:=1}"
+: "${MW_NODE:=}"
+# node for the masker; schedulers start with a bare PATH, so look in the usual places too
+[ -n "$MW_NODE" ] || MW_NODE="$(command -v node 2>/dev/null || true)"
+[ -n "$MW_NODE" ] || for n in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do [ -x "$n" ] && { MW_NODE="$n"; break; }; done
+export MW_HOME MW_LOG_MAX_MB MW_MASK_EXTRA MW_MASK_GENERIC
+
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+LOGS="$MW_HOME/logs" SNAPDIR="$MW_HOME/snapshots"
+umask 077
+
+t() { if [ -n "$MW_TMUX_SOCKET" ]; then "$MW_TMUX" -L "$MW_TMUX_SOCKET" "$@"; else "$MW_TMUX" "$@"; fi; }
+die() { echo "mw: $*" >&2; exit 1; }
+valid_tab() { printf '%s' "$1" | grep -Eq '^[A-Za-z0-9_-]{1,40}$'; }
+q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }   # single-quote for sh
+
+# The masker is safe-logs' mask-pipe.mjs: installed next to mw (safe-logs/), or the sibling skill in this repo.
+# Without it (or without node) mw writes nothing.
+MASK_PIPE=""
+for p in "$(dirname "$self")/safe-logs/mask-pipe.mjs" "$(dirname "$self")/../../safe-logs/scripts/mask-pipe.mjs"; do [ -f "$p" ] && { MASK_PIPE="$p"; break; }; done
+
+mask() {
+  [ -n "$MASK_PIPE" ] && [ -n "$MW_NODE" ] && [ -x "$MW_NODE" ] || { echo "mw: the masker (node + safe-logs/mask-pipe.mjs) is missing; writing nothing" >&2; return 1; }
+  local a=(); [ "$MW_MASK_GENERIC" = 0 ] && a+=(--no-generic); [ -n "$MW_MASK_EXTRA" ] && a+=(--extra "$MW_MASK_EXTRA"); [ -n "${MW_MASK_COUNT:-}" ] && a+=(--count)
+  case "$1" in
+    filter) "$MW_NODE" "$MASK_PIPE" --cr-to-nl --strip-ansi ${a[@]+"${a[@]}"} ;;
+    log)    "$MW_NODE" "$MASK_PIPE" --log "$2" "$3" --max-mb "$MW_LOG_MAX_MB" ${a[@]+"${a[@]}"} ;;
+    *)      echo "mw: unknown mask mode" >&2; return 2 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------------------------
+cmd_mask() { mask filter; }
+
+cmd_log() {
+  local tab="${1:?usage: mw log <tab>}"
+  mkdir -p "$LOGS" && chmod 700 "$MW_HOME" "$LOGS" 2>/dev/null
+  mask log "$LOGS" "$tab"
+}
+
+pipe_cmd() { printf 'exec %s log %s' "$(q "$self")" "$(q "$1")"; }
+
+cmd_new() {
+  local tab="${1:?usage: mw new <tab>}"
+  valid_tab "$tab" || die "tab names are letters, digits, _ and - (got '$tab')"
+  mkdir -p "$LOGS" "$SNAPDIR"
+  if t has-session -t "=$tab" 2>/dev/null; then
+    if [ -n "${TMUX:-}" ]; then exec "$MW_TMUX" switch-client -t "=$tab"; fi
+    if [ -n "$MW_TMUX_SOCKET" ]; then exec "$MW_TMUX" -L "$MW_TMUX_SOCKET" attach -t "=$tab"; fi
+    exec "$MW_TMUX" attach -t "=$tab"
+  fi
+  # New tab: create it with logging on. (pipe-pane without -o replaces a pipe; -o would toggle one off.)
+  if [ -n "${MW_DETACHED:-}" ]; then
+    t new-session -d -s "$tab" ${MW_NEW_CMD:+"$MW_NEW_CMD"} && t pipe-pane -t "=$tab:" "$(pipe_cmd "$tab")"
+    return
+  fi
+  if [ -n "$MW_TMUX_SOCKET" ]; then exec "$MW_TMUX" -L "$MW_TMUX_SOCKET" new-session -s "$tab" \; pipe-pane "$(pipe_cmd "$tab")"; fi
+  exec "$MW_TMUX" new-session -s "$tab" \; pipe-pane "$(pipe_cmd "$tab")"
+}
+
+# One pane per line. '|' because tmux turns tabs into '_' when no locale is set (schedulers); the
+# session name goes last so a '|' inside it can't shift the fields.
+panes() { t list-panes -a -F '#{pane_id}|#{window_index}|#{pane_index}|#{pane_pipe}|#{pane_current_command}|#{session_name}' 2>/dev/null; }
+
+cmd_pipe_all() {
+  local s w p id piped cmd n=0
+  while IFS='|' read -r id w p piped cmd s; do
+    [ "$piped" = 1 ] && continue
+    t pipe-pane -t "$id" "$(pipe_cmd "$s")" && n=$((n + 1))
+  done < <(panes)
+  echo "mw: logging turned on for $n pane(s)"
+}
+
+cmd_snap_once() {
+  mkdir -p "$SNAPDIR" "$LOGS" || return 1
+  local list; list="$(panes)" || true
+  [ -z "$list" ] && return 0        # no tmux server: nothing to do
+  local s w p id piped cmd name tmp now rows="" errs=0
+  now="$(date '+%Y-%m-%d %H:%M:%S %z')"
+  while IFS='|' read -r id w p piped cmd s; do
+    case " $MW_SNAP_SKIP " in *" $s "*) continue ;; esac
+    name="$(printf '%s' "$s" | tr -c 'A-Za-z0-9_-' '_')-w${w}p${p}"
+    tmp="$SNAPDIR/.$name.txt.tmp"
+    if { printf '# %s · captured %s · masked\n' "$name" "$now"; t capture-pane -p -J -S "-$MW_SNAP_LINES" -t "$id"; } | mask filter >"$tmp"; then
+      mv -f "$tmp" "$SNAPDIR/$name.txt"
+    else
+      rm -f "$tmp"; errs=$((errs + 1)); echo "mw snap: $name not written (capture or mask failed)" >&2
+    fi
+    rows+="| $s | w${w}p${p} | $cmd | $([ "$piped" = 1 ] && echo on || echo '**off**') | [$name.txt]($name.txt) |"$'\n'
+  done <<<"$list"
+  { printf '# Tabs\n\nCaptured %s every %ss (masked). Snapshots of panes that closed stay until pruned.\n\n' "$now" "$MW_SNAP_EVERY"
+    printf '| Tab | Pane | Running | Logging | Snapshot |\n|---|---|---|---|---|\n%s' "$rows"; } | mask filter >"$SNAPDIR/.INDEX.md.tmp" &&
+    mv -f "$SNAPDIR/.INDEX.md.tmp" "$SNAPDIR/INDEX.md" || { rm -f "$SNAPDIR/.INDEX.md.tmp"; errs=$((errs + 1)); }
+  cmd_prune quiet
+  [ "$errs" -eq 0 ]
+}
+
+cmd_snap() {
+  if [ "${1:-}" = "--loop" ]; then
+    while true; do cmd_snap_once; sleep "$MW_SNAP_EVERY"; done
+  fi
+  cmd_snap_once
+}
+
+cmd_prune() {
+  [ -d "$LOGS" ] && find "$LOGS" -type f -name '*.log' -mtime +"$MW_LOG_KEEP_DAYS" -delete
+  [ -d "$SNAPDIR" ] && find "$SNAPDIR" -type f -name '*.txt' -mtime +"$MW_LOG_KEEP_DAYS" -delete
+  [ "${1:-}" = quiet ] || echo "mw: pruned logs and snapshots older than $MW_LOG_KEEP_DAYS days"
+}
+
+cmd_scrub() {
+  local target="${1:?usage: mw scrub <file|dir>}" f n total=0 files=0
+  [ -e "$target" ] || die "no such file or folder"
+  while IFS= read -r f; do
+    n="$(MW_MASK_COUNT=1 mask filter <"$f" 2>&1 >"$f.mwtmp" | sed -n 's/^masked-lines=//p')" || { rm -f "$f.mwtmp"; die "scrub failed on $f (left as it was)"; }
+    if [ "${n:-0}" -gt 0 ]; then chmod 600 "$f.mwtmp"; mv -f "$f.mwtmp" "$f"; echo "$f: $n line(s) masked"; total=$((total + n)); files=$((files + 1))
+    else rm -f "$f.mwtmp"; fi
+  done < <(if [ -d "$target" ]; then find "$target" -type f \( -name '*.log' -o -name '*.txt' -o -name '*.md' \); else echo "$target"; fi)
+  echo "mw scrub: $total line(s) masked in $files file(s)"
+}
+
+cmd_ls() {
+  local s w p id piped cmd name age
+  printf '%-16s %-6s %-14s %-8s %s\n' TAB PANE RUNNING LOGGING SNAPSHOT
+  while IFS='|' read -r id w p piped cmd s; do
+    name="$(printf '%s' "$s" | tr -c 'A-Za-z0-9_-' '_')-w${w}p${p}"
+    if [ -f "$SNAPDIR/$name.txt" ]; then age="$(( $(date +%s) - $(stat -c %Y "$SNAPDIR/$name.txt" 2>/dev/null || stat -f %m "$SNAPDIR/$name.txt") ))s ago"; else age=none; fi
+    printf '%-16s %-6s %-14s %-8s %s\n' "$s" "w${w}p${p}" "$cmd" "$([ "$piped" = 1 ] && echo on || echo OFF)" "$age"
+  done < <(panes)
+}
+
+cmd_doctor() {
+  local bad=0 warn=0
+  ok() { echo "ok    $*"; }; no() { echo "FAIL  $*"; bad=$((bad + 1)); }; wa() { echo "warn  $*"; warn=$((warn + 1)); }
+  command -v "$MW_TMUX" >/dev/null && ok "tmux: $("$MW_TMUX" -V)" || no "tmux not found (MW_TMUX=$MW_TMUX)"
+  [ -n "$MW_NODE" ] && [ -x "$MW_NODE" ] && [ -n "$MASK_PIPE" ] && ok "node + safe-logs (masker)" || no "node or safe-logs/mask-pipe.mjs not found: nothing can be masked, so nothing will be logged"
+  command -v mosh-server >/dev/null && ok "mosh-server (for attaching from another machine)" || wa "mosh-server not on PATH (ssh still works; mosh survives Wi-Fi changes)"
+  # the masker works
+  local fake; fake="pre""prod$(printf 'Ab3d%.0s' 1 2 3 4 5 6 7 8)"
+  if [ "$(printf 'GET /x?project_id=%s failed\n' "$fake" | mask filter)" = "GET /x?project_id=<masked> failed" ]; then ok "masker masks a key in a URL"; else no "masker did not mask a test key"; fi
+  # folder safety
+  if [ -d "$MW_HOME" ]; then
+    local mode; mode="$(stat -c %a "$MW_HOME" 2>/dev/null || stat -f %Lp "$MW_HOME")"
+    [ "$mode" = 700 ] && ok "MW_HOME is private (700)" || wa "MW_HOME mode is $mode; run: chmod 700 \"\$MW_HOME\""
+    case "$MW_HOME" in
+      *Drop[b]ox*|*Cloud[S]torage*|*iCloud*|*"Mobile Documents"*|*"Google Drive"*|*OneDrive*|*Nextcloud*|*Syncthing*)
+        wa "MW_HOME is inside a synced folder. Fine only if that folder is yours alone: never a shared or team folder, never a public link" ;;
+      *) ok "MW_HOME is not in a known synced folder" ;;
+    esac
+    if git -C "$MW_HOME" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      if git -C "$MW_HOME" check-ignore -q "$LOGS/x.log" 2>/dev/null && git -C "$MW_HOME" check-ignore -q "$SNAPDIR/x.txt" 2>/dev/null; then ok "MW_HOME is in a git repo but logs and snapshots are ignored"
+      else no "MW_HOME is inside a git repo and logs/snapshots are NOT ignored: they will be committed"; fi
+    fi
+  else wa "MW_HOME does not exist yet ($MW_HOME); mw new or mw snap makes it"; fi
+  # panes
+  local s w p id piped cmd off=0 n=0
+  while IFS='|' read -r id w p piped cmd s; do n=$((n + 1)); [ "$piped" = 1 ] || { off=$((off + 1)); echo "      not logging: $s w${w}p${p}"; }; done < <(panes)
+  if [ "$n" -eq 0 ]; then wa "no tmux server running"; elif [ "$off" -eq 0 ]; then ok "all $n pane(s) logging"; else wa "$off of $n pane(s) not logging (mw pipe-all turns them on)"; fi
+  # snapshots fresh
+  if [ -f "$SNAPDIR/INDEX.md" ]; then
+    local age=$(( $(date +%s) - $(stat -c %Y "$SNAPDIR/INDEX.md" 2>/dev/null || stat -f %m "$SNAPDIR/INDEX.md") ))
+    [ "$age" -le $((MW_SNAP_EVERY * 3)) ] && ok "snapshots fresh (${age}s old)" || wa "snapshots are ${age}s old: is the snapper running?"
+  else wa "no snapshots yet: is the snapper installed? (install.sh)"; fi
+  echo "doctor: $bad problem(s), $warn warning(s)"
+  [ "$bad" -eq 0 ]
+}
+
+case "${1:-}" in
+  new) shift; cmd_new "$@" ;;
+  ls) cmd_ls ;;
+  snap) shift; cmd_snap "$@" ;;
+  log) shift; cmd_log "$@" ;;
+  pipe-all) cmd_pipe_all ;;
+  mask) cmd_mask ;;
+  scrub) shift; cmd_scrub "$@" ;;
+  prune) cmd_prune ;;
+  doctor) cmd_doctor ;;
+  -h|--help|help|"") sed -n '2,29p' "$self" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command '$1' (mw help)" ;;
+esac

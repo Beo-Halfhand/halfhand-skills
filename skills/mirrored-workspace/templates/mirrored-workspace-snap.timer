@@ -1,0 +1,10 @@
+[Unit]
+Description=mirrored-workspace: snapshots every @EVERY@ seconds
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=@EVERY@
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

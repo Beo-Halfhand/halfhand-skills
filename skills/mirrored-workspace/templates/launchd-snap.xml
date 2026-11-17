@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- mirrored-workspace snapper for macOS launchd. install.sh fills in the placeholders and saves it
+     as <label>.plist in your LaunchAgents folder. Runs "mw snap" every @EVERY@ seconds. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@MW@</string>
+    <string>snap</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>@EVERY@</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PATH@</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>@MW_HOME@/snapper.out</string>
+  <key>StandardErrorPath</key>
+  <string>@MW_HOME@/snapper.out</string>
+</dict>
+</plist>
