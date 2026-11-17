@@ -8,4 +8,4 @@ One note per subject: what is true **now** about it. The day logs say what happe
 - Start each home with a one-line summary and an "As of" date. End it with links to the notes it touches.
 - One writer per home: whoever created it, unless [[RULES]] says otherwise. Others link to it and send changes through [[INBOX]].
 
-Delete [[example-project]] once you have a real one.
+Delete `example-project.md` once you have a real one.

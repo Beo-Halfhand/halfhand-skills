@@ -16,6 +16,7 @@
 # Prints file:line and the rule name. Never prints the matching text.
 use strict;
 use warnings;
+BEGIN { eval { require File::Find; 1 } or do { print STDERR "vault-check: perl's core modules are missing (File::Find). On Debian/Ubuntu: sudo apt-get install perl\n"; exit 2 } }
 use File::Find;
 use File::Spec;
 
@@ -97,7 +98,7 @@ for my $f (@files) {
     if ($is_inbox) {
       if ($line =~ /^##\s+Entries\s*$/) { $in_entries = 1; next }
       if ($line =~ /^##\s/) { $in_entries = 0; next }
-      if ($in_entries && $line =~ /^\s*-\s+\S/ && $line !~ /—\s*[^\s()][^()]*\([^()]+\)\s*\|\s*\d{4}-\d{2}-\d{2}\s*$/) {
+      if ($in_entries && $line =~ /^\s*-\s+\S/ && $line !~ /(?:—|--)\s*[^\s()][^()]*\([^()]+\)\s*\|\s*\d{4}-\d{2}-\d{2}\s*$/) {
         fail($where, 'inbox entry not signed "— <agent> (<machine>) | YYYY-MM-DD"');
       }
     }

@@ -35,6 +35,8 @@ The template is in [`template/`](template/). [references/layout.md](references/l
 
 ## Steps
 
+**Before you start.** You need bash and perl with its core modules. macOS has both. On Debian or Ubuntu minimal images (containers, small servers) only `perl-base` is installed, which is not enough: run `sudo apt-get install perl`. Check with `perl -MFile::Find -e1` (no output means it's fine). git is needed only for `--git`. Below, `<this skill>` means the folder that holds this SKILL.md.
+
 ### 1. Make the vault (one command)
 
 ```sh
@@ -43,18 +45,18 @@ bash <this skill>/scripts/new-vault.sh ~/vault --agent assistant --machine lapto
 
 - `--agent`: the core writer's name (the assistant that owns `CORE.md`). Lowercase, hyphens.
 - `--machine`: a short name for this machine. Pick a role (`laptop`, `desktop`, `server`), not the computer's network name: the vault may be read on other machines and the name shows up in every log line.
-- `--git`: also start a local git repo for history. Never add a public remote.
+- `--git`: also start a local git repo for history (needs git; it stops before writing anything if git is missing). Never add a public remote.
 
-It refuses a folder that isn't empty, fills the template, makes today's day log, and prints the instructions block filled in with the path and names.
+It refuses a folder that isn't empty, fills the template, makes today's day log, and prints the instructions block filled in with the path and names (the vault's own `PASTE-INTO-YOUR-ASSISTANT.md` is filled in too).
 
-**No shell?** Copy `template/` to where the vault should live and replace `{{AGENT}}`, `{{MACHINE}}` and `{{DATE}}` in the notes by hand.
+**No shell?** Copy `template/` to where the vault should live, replace `{{AGENT}}`, `{{MACHINE}}` and `{{DATE}}` in the notes by hand, fill the `<...>` values in `PASTE-INTO-YOUR-ASSISTANT.md`, and create today's day log as `logs/<machine>/YYYY-MM-DD.md`.
 
 ### 2. Tell the assistant about it
 
 Paste the block from [`template/PASTE-INTO-YOUR-ASSISTANT.md`](template/PASTE-INTO-YOUR-ASSISTANT.md) (step 1 prints it filled in) into the assistant's custom instructions, system prompt, project instructions or rules file. It works with any assistant that can read and write files. It tells the assistant to read `ROUTER.md` first, where it may write, how to sign, and to never write a secret.
 
 ### 3. Fill in CORE and the first topic home
-Ask the assistant to interview the owner for `CORE.md` (who, how they like to work, people, projects), then replace `topics/example-project.md` with a real topic. Keep the router's "Now" table pointing at each home.
+Ask the assistant to interview the owner for `CORE.md` (who, how they like to work, people, projects), then replace `topics/example-project.md` with a real topic and change the two places that point at it (`CORE.md` "Projects" and the `ROUTER.md` "Now" table) to the new name. Step 5 lists any link you missed as "wikilink to a note that does not exist". Keep the router's "Now" table pointing at each home.
 
 ### 4. Add a second agent (optional)
 See [references/sharing.md](references/sharing.md). In short:
@@ -70,7 +72,7 @@ perl <this skill>/scripts/vault-check.pl ~/vault
 
 Prints `file:line: rule`, never the matching text. Exit 0 clean, 1 problems. It fails on secret-shaped values anywhere (keys, tokens, private keys, keys inside URLs, seed-phrase lines), files that must never be in a vault (`.env`, key and wallet files), a KEY-INDEX cell that looks like a value, an unsigned inbox line, a missing front-door file, a router over 8 KB, a misnamed day log, and a `[[wikilink]]` to no note. It warns on notes over 50 KB and leftover placeholders. Run it before sharing, backing up or syncing the vault somewhere new, and on a schedule if you like.
 
-`bash scripts/selftest.sh` makes a vault in a temporary folder and plants each problem once (29 checks).
+`bash <this skill>/scripts/selftest.sh` makes a vault in a temporary folder and plants each problem once (32 checks; 30 when git isn't installed, and it says which it skipped). Expect `selftest: N ok, 0 failed`.
 
 ## How several agents share one vault safely
 
@@ -85,7 +87,7 @@ The rule that does the work: **every file has exactly one writer.** In a synced 
 
 - **Day logs split by machine** (`logs/laptop/`, `logs/desktop/`), so two machines never write the same file at once.
 - **The inbox is append-only.** Nobody edits a line that's there, including their own; a correction is a new line. The core writer moves filed lines, whole, to `logs/inbox-archive/YYYY-MM.md`.
-- **Sign everything:** `— <agent> (<machine>) | YYYY-MM-DD`. A note with no signature has no owner to ask.
+- **Sign everything:** `— <agent> (<machine>) | YYYY-MM-DD` (an em dash; `--` is accepted too, for keyboards without one). A note with no signature has no owner to ask.
 - **A fact lives once.** The router and HOME point; they never copy. A decision updates every note that said the old thing, in the same turn.
 - **Git, if used, commits from one machine only**, so a commit never races the sync.
 

@@ -18,7 +18,7 @@ Give every key a line the day it's made. Use one label pattern in your password 
 | Way in | Stop it |
 |---|---|
 | The owner pastes a key and says "remember this" | The assistant refuses and offers a KEY-INDEX line instead |
-| A day log copies a command's output, and the output has a key in a URL or an error message | Log the conclusion, not raw output. If you mirror terminal output, mask it first (the mirrored-workspace skill in this repo masks key-shaped strings before anything is written) |
+| A day log copies a command's output, and the output has a key in a URL or an error message | Log the conclusion, not raw output. If you mirror terminal output into the vault, mask it first with a tool that replaces key-shaped strings before anything is written |
 | A config or `.env` file pasted "so the assistant can see the setup" | Paste names and structure only: `WEATHER_KEY=<set>` |
 | A screenshot or export dropped into `files/` | Look before filing; `.env`, key and wallet files are refused by the checker and the `.gitignore` |
 | A report from a one-off session | The session's prompt says "names only, never values"; check reports with `vault-check.pl` |

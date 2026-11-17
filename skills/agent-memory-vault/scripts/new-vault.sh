@@ -36,6 +36,7 @@ if [ -e "$dest" ] && [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
   echo "new-vault: $dest is not empty. Refusing to write into it." >&2; exit 1
 fi
 [ -d "$template" ] || { echo "new-vault: template folder not found next to this script" >&2; exit 1; }
+[ "$use_git" = 0 ] || command -v git >/dev/null || { echo "new-vault: --git needs git (install it, or leave out --git)" >&2; exit 1; }
 
 mkdir -p "$dest"
 cp -R "$template"/. "$dest"/
@@ -45,6 +46,10 @@ today="$(date +%Y-%m-%d)"
 find "$dest" -type f -name '*.md' | while IFS= read -r f; do
   sed -e "s/{{AGENT}}/$agent/g" -e "s/{{MACHINE}}/$machine/g" -e "s/{{DATE}}/$today/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
+
+abs="$(cd "$dest" && pwd)"
+# The vault's own copy of the paste-in instructions, filled in like the printed block.
+sed -e "s|<VAULT PATH>|$abs|g" -e "s|<AGENT NAME>|$agent|g" -e "s|<MACHINE NAME>|$machine|g" "$dest/PASTE-INTO-YOUR-ASSISTANT.md" >"$dest/PASTE-INTO-YOUR-ASSISTANT.md.tmp" && mv "$dest/PASTE-INTO-YOUR-ASSISTANT.md.tmp" "$dest/PASTE-INTO-YOUR-ASSISTANT.md"
 
 # Today's day log for this machine.
 mkdir -p "$dest/logs/$machine"
@@ -59,7 +64,6 @@ if [ "$use_git" = 1 ]; then
   git -C "$dest" init -q && echo "git: initialised (local only; no remote added)"
 fi
 
-abs="$(cd "$dest" && pwd)"
 cat <<EOF
 Vault ready: $abs
   core writer: $agent    this machine: $machine

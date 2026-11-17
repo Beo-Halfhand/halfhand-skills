@@ -12,6 +12,8 @@ id_ecdsa*
 *wallet*.json
 *credentials*
 *secret*
+# The four name patterns above also skip notes such as topics/seed-catalog.md. To keep one in git, add a line
+# like  !topics/seed-catalog.md  below (the checker still scans every note for secrets).
 # Binaries stay out of git (they still sync with the folder).
 *.png
 *.jpg

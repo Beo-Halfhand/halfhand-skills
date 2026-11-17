@@ -43,6 +43,7 @@ done
 [ -f "$tmp/v/logs/laptop/$(date +%Y-%m-%d).md" ] && pass "today's day log is in logs/<machine>/" || flop "no day log for today"
 grep -rqF '{{' "$tmp/v" && flop "placeholders left after setup" || pass "every placeholder filled"
 grep -qF "Your name in it is helper" "$tmp/new.out" && pass "prints the filled-in paste block" || flop "paste block not printed"
+grep -qF "Your name in it is helper" "$tmp/v/PASTE-INTO-YOUR-ASSISTANT.md" && ! grep -qF '<VAULT PATH>' "$tmp/v/PASTE-INTO-YOUR-ASSISTANT.md" && pass "the vault's own paste file is filled in" || flop "vault paste file still has placeholders"
 if check; then pass "fresh vault is clean"; else flop "fresh vault not clean"; cat "$tmp/check.out"; fi
 size=$(wc -c <"$tmp/v/ROUTER.md" | tr -d " "); [ "$size" -lt 8192 ] && pass "router under 8 KB ($size bytes)" || flop "router is $size bytes"
 
@@ -85,6 +86,10 @@ new; echo "- the owner moved to a new time zone" >>"$tmp/v/INBOX.md"
 expect_fail "unsigned inbox entry" "inbox entry not signed"
 new; echo "- the owner moved to UTC+1 — helper (laptop) | 2026-02-01" >>"$tmp/v/INBOX.md"
 if check; then pass "signed inbox entry passes"; else flop "signed entry flagged"; cat "$tmp/check.out"; fi
+new; echo "- the owner moved to UTC+1 -- helper (laptop) | 2026-02-01" >>"$tmp/v/INBOX.md"
+if check; then pass "a signature typed with -- passes"; else flop "-- signature flagged"; cat "$tmp/check.out"; fi
+new; rm "$tmp/v/topics/example-project.md"; sed -i.bak 's/example-project/kitchen-remodel/g' "$tmp/v/CORE.md" "$tmp/v/ROUTER.md"; rm -f "$tmp/v/"*.bak; printf '# Kitchen remodel\n' >"$tmp/v/topics/kitchen-remodel.md"
+if check; then pass "step 3 as written (replace the example topic, fix CORE and ROUTER) checks clean"; else flop "step 3 leaves broken links"; cat "$tmp/check.out"; fi
 
 # 7. structure
 new; rm "$tmp/v/KEY-INDEX.md"
@@ -99,11 +104,13 @@ new; mkdir -p "$tmp/v/logs/laptop" && : >"$tmp/v/logs/laptop/today notes.md"
 expect_fail "badly named day log" "day log must be"
 
 # 8. git option
+if ! command -v git >/dev/null; then echo "skip  --git checks (git not installed)"; else
 rm -rf "$tmp/g"; if bash "$here/new-vault.sh" "$tmp/g" --git >/dev/null 2>&1 && [ -d "$tmp/g/.git" ] && [ -z "$(git -C "$tmp/g" remote)" ]; then
   pass "--git makes a local repo with no remote"
   (cd "$tmp/g" && : >.env && : >wallet-1.json && git status --porcelain --ignored | grep -q '!! .env' && git status --porcelain --ignored | grep -q '!! wallet-1.json') \
     && pass ".gitignore keeps .env and wallet files out of history" || flop ".gitignore let a secret-shaped file through"
 else flop "--git"; fi
+fi
 
 echo "selftest: $ok ok, $bad failed"
 [ "$bad" -eq 0 ]
