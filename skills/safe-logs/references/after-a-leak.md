@@ -13,23 +13,24 @@ Make a new key, switch your programs to it, check they work, then **revoke the o
 While you switch, keep the new value off the screen too. Paste it at a hidden prompt (`read -rs`), write it straight into a mode-600 env file, and check it with a fingerprint, not by printing it:
 
 ```sh
-printf %s "$NEW_KEY" | shasum -a 256 | cut -c1-8
+printf %s "$NEW_KEY" | sha256sum | cut -c1-8      # macOS: shasum -a 256
 ```
 
 ## 2. Count the copies (without printing them)
 
 ```sh
-node count-copies.mjs --var OLD_KEY --env-file ~/secrets/old.env ~/logs ~/notes ~/project
+node tools/safe-logs/count-copies.mjs --var OLD_KEY --env-file ~/secrets/old.env ~/logs ~/notes ~/project
 ```
 
 For each file it prints how many **whole** copies and how many copies of the **first 12 characters** it holds. A cut-off or wrapped copy still counts. It never prints the value or a line of the file. It walks folders, skips `.git` and `node_modules`, reads binary files too, and doesn't follow symlinks. Exit 1 means copies were found.
 
-Look in: your logs folder, shell history (`~/.zsh_history`, `~/.bash_history`), terminal mirrors and transcripts, synced notes, the project folder (untracked files too), and `/tmp`. Check git history separately with a secret scanner (`gitleaks git`).
+Look in: your logs folder, shell history (`~/.zsh_history`, `~/.bash_history`), terminal mirrors and transcripts, synced notes, the project folder (untracked files too), and `/tmp`. Check git history separately with a secret scanner, for example [gitleaks](https://github.com/gitleaks/gitleaks) (`gitleaks git`), or this repo's prepublish-leak-check skill (`--history`).
 
 ## 3. Clean
 
 ```sh
-node mask-pipe.mjs --count < old.log > old.log.masked && mv old.log.masked old.log
+set -a; . ~/secrets/old.env; set +a      # OLD_KEY by name: a key with no known shape is only masked this way
+(umask 077; node tools/safe-logs/mask-pipe.mjs --count --secret-vars OLD_KEY < old.log > old.log.masked) && mv old.log.masked old.log
 ```
 
 `masked-lines=N` on stderr tells you how many lines changed. Then count again: 0 whole copies.

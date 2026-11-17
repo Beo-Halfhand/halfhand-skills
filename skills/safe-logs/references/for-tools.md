@@ -14,7 +14,7 @@ For anything that writes other programs' output somewhere: a terminal mirror, a 
 ```bash
 MASK_PIPE="$HERE/safe-logs/mask-pipe.mjs"
 : "${NODE:=$(command -v node || true)}"
-[ -n "$NODE" ] || for n in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do [ -x "$n" ] && { NODE="$n"; break; }; done
+[ -n "$NODE" ] || for n in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node "$HOME"/.volta/bin/node "$HOME"/.nvm/versions/node/*/bin/node; do [ -x "$n" ] && { NODE="$n"; break; }; done
 mask() { [ -x "$NODE" ] && [ -f "$MASK_PIPE" ] || { echo "masker missing; writing nothing" >&2; return 1; }; "$NODE" "$MASK_PIPE" "$@"; }
 
 # a snapshot: temp file, rename only when the mask succeeded
@@ -23,13 +23,13 @@ if capture_screen | mask --cr-to-nl --strip-ansi >"$out.tmp"; then mv -f "$out.t
 # a running log
 some-stream | mask --log "$LOGS" "$name" --max-mb 20
 
-# masking an old file in place, with a count (never values)
-n="$(mask --count <"$f" 2>&1 >"$f.tmp" | sed -n 's/^masked-lines=//p')" && mv -f "$f.tmp" "$f"
+# masking an old file in place, with a count (never values). pipefail: if the mask fails, the original stays
+n="$(set -o pipefail; umask 077; mask --count <"$f" 2>&1 >"$f.tmp" | sed -n 's/^masked-lines=//p')" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
 ```
 
 Map your tool's own settings onto the flags: an extra-terms file → `--extra`, "no catch-all" → `--no-generic`, a size → `--max-mb`. The bash `${a[@]+"${a[@]}"}` form passes an empty flag list safely under `set -u`, including on bash 3.2.
 
-Ship the three files together: `mask-pipe.mjs`, `redact.mjs`, `options.mjs`.
+Ship at least these three together: `mask-pipe.mjs`, `redact.mjs`, `options.mjs` (the pipe needs only them). Copying the whole `scripts/` folder is simplest.
 
 ## From Node
 

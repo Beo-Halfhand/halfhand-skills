@@ -21,7 +21,7 @@ some-program 2>&1 | node scripts/mask-pipe.mjs --log ~/logs job  # masked, daily
 | `scripts/mask-pipe.mjs` | The pipe and log writer, as a command or a module (`maskPipe`, `createMaskTransform`, `openDailyLog`) |
 | `scripts/options.mjs` | `SAFE_LOGS_*` settings: your own terms, exact secret values, toggles |
 | `scripts/count-copies.mjs` | After a leak: counts copies of one secret across folders, never prints it |
-| `scripts/selftest.mjs` | 81 checks, no network (about 5 seconds) |
+| `scripts/selftest.mjs` | 85 checks, no network (about 5 seconds) |
 | `references/where-leaks-come-from.md` | The seven ways keys reach output, and the fix at each source |
 | `references/rules.md` | Every rule with examples, what it keeps and misses, every option |
 | `references/shell.md` | Pipes and exit codes, separate streams, captures, `tee`, TTY refusal, never `-x` |

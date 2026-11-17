@@ -64,4 +64,7 @@ function main(argv) {
   return hits ? 1 : 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main(process.argv.slice(2));
+// Run as a command only when started directly. Node resolves symlinks for the module (/tmp on macOS, a linked
+// tools/ folder) but not in argv[1], so compare real paths, or a linked path would silently do nothing.
+const realArgv1 = () => { try { return fs.realpathSync(process.argv[1]); } catch { return path.resolve(process.argv[1]); } };
+if (process.argv[1] && realArgv1() === fs.realpathSync(fileURLToPath(import.meta.url))) process.exitCode = main(process.argv.slice(2));

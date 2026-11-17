@@ -21,13 +21,16 @@ some-program 2>&1 | node "$MP"        # or read ${PIPESTATUS[0]} in bash, ${pipe
 #!/usr/bin/env bash
 if [ -z "${SAFE_LOGS_PIPED:-}" ]; then
   export SAFE_LOGS_PIPED=1
-  "$0" "$@" 2>&1 | node "$(dirname "$0")/tools/safe-logs/mask-pipe.mjs"
-  exit "${PIPESTATUS[0]}"
+  MP="$(cd "$(dirname "$0")" && pwd)/tools/safe-logs/mask-pipe.mjs"   # where you copied scripts/, from THIS script's folder
+  [ -f "$MP" ] || { echo "safe-logs: $MP not found; not running unmasked" >&2; exit 2; }
+  bash "$0" "$@" 2>&1 | node "$MP"            # bash "$0": works for "bash job.sh" and files that aren't executable
+  s=("${PIPESTATUS[@]}"); [ "${s[1]}" = 0 ] || exit "${s[1]}"   # the mask failed: say so
+  exit "${s[0]}"                               # otherwise the script's own exit code
 fi
 # … the rest of the script: docker, curl, sh errors, every tool's output is masked
 ```
 
-The self-test runs exactly this and checks that the exit code survives.
+The self-test runs exactly this (started as `bash job.sh`, not executable) and checks that the exit code survives, that a failing mask is an error, and that a missing `mask-pipe.mjs` runs nothing.
 
 ## Keeping stderr separate
 
@@ -83,7 +86,7 @@ set -x            # after
 ## Checking a file has no copy, without printing it
 
 ```bash
-node count-copies.mjs --var MY_API_KEY some.log     # counts only
+node tools/safe-logs/count-copies.mjs --var MY_API_KEY some.log     # counts only
 ```
 
 Never `grep "$KEY" file` without `-c` or `-q`: a match prints the line.

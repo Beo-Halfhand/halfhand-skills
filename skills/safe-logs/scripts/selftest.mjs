@@ -186,21 +186,32 @@ check(`pipe: 5 MB in ${((Date.now() - t0) / 1000).toFixed(1)} s, byte for byte w
   check('stdio: importing twice wraps once', r.stdout === '?token=<masked>\n', r.stdout);
 }
 
-// ── shell: run a whole script through the pipe, keeping its exit code (references/shell.md) ──
+// ── shell: run a whole script through the pipe, keeping its exit code (references/shell.md, as written there) ──
 {
-  const d = tmp(), sh = path.join(d, 'job.sh');
-  fs.writeFileSync(sh, `#!/usr/bin/env bash
-if [ -z "\${SAFE_LOGS_PIPED:-}" ]; then
-  export SAFE_LOGS_PIPED=1
-  "$0" "$@" 2>&1 | "${process.execPath}" "${PIPE}"
-  exit "\${PIPESTATUS[0]}"
-fi
-echo "connecting to wss://rpc.example.com/?project_id=$FAKE_PID"
+  const d = tmp(), proj = path.join(d, 'proj'), sh = path.join(proj, 'job.sh');
+  fs.mkdirSync(path.join(proj, 'tools'), { recursive: true });
+  fs.symlinkSync(HERE, path.join(proj, 'tools', 'safe-logs'));
+  const recipe = fs.readFileSync(path.join(HERE, '..', 'references', 'shell.md'), 'utf8').match(/```bash\n(#!\/usr\/bin\/env bash\nif \[ -z "\$\{SAFE_LOGS_PIPED[\s\S]*?\nfi\n)/)[1];
+  fs.writeFileSync(sh, `${recipe}echo "connecting to wss://rpc.example.com/?project_id=$FAKE_PID"
 echo "oops ?token=$FAKE_PID" >&2
 exit 7
-`, { mode: 0o755 });
-  r = spawnSync(sh, [], { encoding: 'utf8', env: { ...process.env, FAKE_PID: PID } });
-  check('shell: rerun-through-the-pipe keeps the exit code and masks stdout and stderr', r.status === 7 && !r.stdout.includes(PID) && r.stdout.includes('?project_id=<masked>') && r.stdout.includes('oops ?token=<masked>'), `${r.status} ${r.stdout}`);
+`, { mode: 0o644 });   // not executable, started as "bash job.sh"
+  const env = { ...process.env, FAKE_PID: PID, PATH: `${path.dirname(process.execPath)}:${process.env.PATH}` };
+  delete env.SAFE_LOGS_PIPED; delete env.SAFE_LOGS_EXTRA;
+  r = spawnSync('bash', [sh], { encoding: 'utf8', env, cwd: d });
+  check('shell: rerun-through-the-pipe (bash job.sh, not executable) keeps the exit code and masks stdout and stderr', r.status === 7 && !r.stdout.includes(PID) && r.stdout.includes('?project_id=<masked>') && r.stdout.includes('oops ?token=<masked>'), `${r.status} ${r.stdout}${r.stderr}`);
+  r = spawnSync('bash', [sh], { encoding: 'utf8', env: { ...env, SAFE_LOGS_EXTRA: path.join(d, 'no-such-terms') } });
+  check('shell: when the mask fails, the script exits with the mask\'s error (2), and nothing unmasked is printed', r.status === 2 && !r.stdout.includes(PID), `${r.status}`);
+  fs.rmSync(path.join(proj, 'tools', 'safe-logs'));
+  r = spawnSync('bash', [sh], { encoding: 'utf8', env });
+  check('shell: mask-pipe.mjs missing -> exit 2, the script never runs unmasked', r.status === 2 && !r.stdout.includes(PID) && /not found; not running unmasked/.test(r.stderr), `${r.status}`);
+  // the in-place clean from references/for-tools.md: a failing mask must leave the original file alone
+  const f = path.join(d, 'old.log'); fs.writeFileSync(f, `x ?token=${PID}\n`, { mode: 0o600 });
+  const clean = (extra) => spawnSync('bash', ['-c', `mask() { "${process.execPath}" "${PIPE}" "$@"; }; f="$1"; n="$(set -o pipefail; umask 077; mask --count ${extra} <"$f" 2>&1 >"$f.tmp" | sed -n 's/^masked-lines=//p')" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"; echo "n=$n"`, '_', f], { encoding: 'utf8', env });
+  r = clean(`--extra ${path.join(d, 'nope')}`);
+  check('for-tools clean recipe: a failing mask keeps the original file (no 0-byte overwrite), no temp left', fs.readFileSync(f, 'utf8').includes(PID) && !fs.existsSync(`${f}.tmp`));
+  r = clean('');
+  check('for-tools clean recipe: masks in place, counts 1, keeps the file owner-only', r.stdout.includes('n=1') && !fs.readFileSync(f, 'utf8').includes(PID) && (fs.statSync(f).mode & 0o777) === 0o600, r.stdout);
 }
 
 // ── count-copies ──

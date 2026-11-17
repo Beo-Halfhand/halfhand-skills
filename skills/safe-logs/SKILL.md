@@ -34,21 +34,21 @@ This skill puts one mask in front of every place output goes, using one rule lis
 
 ```sh
 node --version                          # 20 or newer
-node <this skill>/scripts/selftest.mjs  # expect: selftest: 81 ok, 0 failed (about 5 seconds)
+node <this skill>/scripts/selftest.mjs  # expect: selftest: 85 ok, 0 failed (about 5 seconds)
 ```
 
-Copy `scripts/` into your project (for example `tools/safe-logs/`). The five `.mjs` files have no dependencies.
+`<this skill>` is the folder that holds this SKILL.md. Copy the whole `scripts/` folder into your project (the modules import each other), for example to `tools/safe-logs/`, and run `node tools/safe-logs/selftest.mjs` there once. No dependencies. Every path below assumes that `tools/safe-logs/`, and a command is run from your project's root.
 
 ### 2. Inside your Node program
 
 Make the mask the **first** import of every entry point (CLI, server, worker):
 
 ```js
-import './tools/safe-logs/mask-stdio.mjs';     // before anything that can log
+import '../tools/safe-logs/mask-stdio.mjs';    // first; the path is relative to THIS file (here bin/app.mjs)
 import { connect } from 'some-sdk';            // its console.error lines are masked too
 ```
 
-An import that comes before it can print before the mask is on. One check that catches this:
+An import that comes before it can print before the mask is on. That includes a `dotenv` import, so `SAFE_LOGS_SECRET_VARS` (step 5) can't see variables it loads: load env files with `node --env-file=.env bin/app.mjs` (Node 20.6+) instead. One check that catches this:
 
 ```sh
 for f in bin/*.mjs; do head -20 "$f" | grep -m1 '^import ' | grep -q mask-stdio || echo "mask is not first: $f"; done
@@ -57,7 +57,7 @@ for f in bin/*.mjs; do head -20 "$f" | grep -m1 '^import ' | grep -q mask-stdio 
 **Loggers that write to file descriptors 1 or 2 directly** (fast JSON loggers do, by default) skip the wrapper. Give them `safeDestination()`, which writes through the masked stream:
 
 ```js
-import { safeDestination } from './tools/safe-logs/mask-stdio.mjs';
+import { safeDestination } from '../tools/safe-logs/mask-stdio.mjs';
 const log = pino({}, safeDestination());      // any logger that takes an object with write()
 ```
 
@@ -74,8 +74,11 @@ It passes text on line by line, as soon as each line ends (`\n` or `\r`, so prog
 ```bash
 if [ -z "${SAFE_LOGS_PIPED:-}" ]; then
   export SAFE_LOGS_PIPED=1
-  "$0" "$@" 2>&1 | node "$(dirname "$0")/tools/safe-logs/mask-pipe.mjs"
-  exit "${PIPESTATUS[0]}"
+  MP="$(cd "$(dirname "$0")" && pwd)/tools/safe-logs/mask-pipe.mjs"   # where you copied scripts/, from THIS script's folder
+  [ -f "$MP" ] || { echo "safe-logs: $MP not found; not running unmasked" >&2; exit 2; }
+  bash "$0" "$@" 2>&1 | node "$MP"            # bash "$0": works for "bash job.sh" and files that aren't executable
+  s=("${PIPESTATUS[@]}"); [ "${s[1]}" = 0 ] || exit "${s[1]}"   # the mask failed: say so
+  exit "${s[0]}"                               # otherwise the script's own exit code
 fi
 ```
 
@@ -100,8 +103,16 @@ The built-in rules don't know your host names, account ids or the exact value of
 
 ```sh
 export SAFE_LOGS_SECRET_VARS=MY_API_KEY,DB_PASSWORD     # their VALUES are masked exactly, wherever they appear
-export SAFE_LOGS_EXTRA=~/.config/safe-logs/terms        # one regex per line: your machine names, ids …
+export SAFE_LOGS_EXTRA="$HOME/.config/safe-logs/terms"  # one regex per line: your machine names, ids …
 ```
+
+The values come from the environment when the mask starts, so set them before your program runs (in the shell, a service file or `node --env-file`). Make the terms file first, or every pipe stops with exit 2:
+
+```sh
+mkdir -p ~/.config/safe-logs && touch ~/.config/safe-logs/terms && chmod 600 ~/.config/safe-logs/terms
+```
+
+Use an absolute path: a `~` inside quotes (as in `.env` and service files) is not expanded. The file's format: [references/rules.md](references/rules.md#your-own-terms-file).
 
 Keep the terms file **outside any repo**. It lists the very things you don't want public. A broken regex in it stops `mask-pipe.mjs` before it writes anything (exit 2). `mask-stdio.mjs` keeps the default rules and says so on stderr instead, because it can't stop your program. Every option and its flag form: [references/rules.md](references/rules.md#options).
 
@@ -110,10 +121,14 @@ Keep the terms file **outside any repo**. It lists the very things you don't wan
 1. **Rotate it first.** Copies in synced folders, backups, version history, CI logs and chat can't be recalled. A key that's revoked is safe wherever its copies are.
 2. Count where it went, without printing it:
    ```sh
-   node count-copies.mjs --var MY_API_KEY --env-file ~/secrets/app.env ~/logs ~/notes
+   node tools/safe-logs/count-copies.mjs --var MY_API_KEY --env-file ~/secrets/app.env ~/logs ~/notes
    ```
    It prints per file the whole copies and the cut-off copies (the first 12 characters), never the value or a line.
-3. Clean the copies (`node mask-pipe.mjs --count < old.log > old.masked && mv old.masked old.log`), then fix the source (steps 2 to 4) so it can't happen again.
+3. Clean the copies, then fix the source (steps 2 to 4) so it can't happen again. Pass the old key by name, because a key with no known shape isn't masked otherwise:
+   ```sh
+   set -a; . ~/secrets/old.env; set +a      # makes OLD_KEY visible to the mask, without printing it
+   (umask 077; node tools/safe-logs/mask-pipe.mjs --count --secret-vars OLD_KEY < old.log > old.log.masked) && mv old.log.masked old.log
+   ```
 
 Full checklist: [references/after-a-leak.md](references/after-a-leak.md).
 
@@ -134,7 +149,7 @@ Importing runs nothing and doesn't touch stdin. A tool in another language runs 
 - **Never `set -x` / `sh -x` / `bash -x`** in anything that touches keys. Tracing prints every expanded variable, and it goes to stderr, where people least expect it.
 - **Keep secrets out of URLs** where you can: a header or a POST body beats a query string. Many libraries log URLs.
 - **The terms file and env files stay outside every repo**, mode 600.
-- **Never print a secret to check it.** Print its length or a short hash (`sha256 | cut -c1-8`) instead. `count-copies.mjs` counts; it never shows.
+- **Never print a secret to check it.** Print its length or a short hash (`sha256sum | cut -c1-8` on Linux, `shasum -a 256 | cut -c1-8` on macOS) instead. `count-copies.mjs` counts; it never shows.
 - **Test the mask with fakes built at run time.** A literal fake key in a test file gets flagged by secret scanners. The self-test shows how.
 
 ## Report back
@@ -157,4 +172,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Merged from the output masks of several of our builds and the masking rules of the mirrored-workspace and fleet-dashboard skills, so there is one list instead of four. Tested on Node 26, macOS arm64: `selftest.mjs` 81/81 (every rule both ways, colours, `\r`, keys split across reads, private key blocks across reads, a line over 64 KB, 5 MB throughput, early-closing readers, the log files and their modes, fail-closed exits, import with no side effects, a library's `console.error` inside a process, the fd-1 limit and its fix, the shell rerun pattern with its exit code, count-copies). mirrored-workspace's own self-test passes 49/49 with this as its masker. Not yet tried by a fresh agent with only this folder.
+**In development.** Merged from the output masks of several of our builds and the masking rules of the mirrored-workspace and fleet-dashboard skills, so there is one list instead of four. Tested on Node 26, macOS arm64, and Node 22, Debian 12 (a container, by a fresh agent following only this file): `selftest.mjs` 85/85 (every rule both ways, colours, `\r`, keys split across reads, private key blocks across reads, a line over 64 KB, 5 MB throughput, early-closing readers, the log files and their modes, fail-closed exits, import with no side effects, a library's `console.error` inside a process, the fd-1 limit and its fix, the shell rerun pattern with its exit code and a failing or missing mask, the in-place clean recipe, a symlinked path, count-copies). mirrored-workspace uses it as its masker (its self-test: 51/51).
