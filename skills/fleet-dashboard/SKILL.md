@@ -1,0 +1,164 @@
+---
+name: fleet-dashboard
+description: Set up one private web page that shows every AI agent someone runs. Each agent gets a card with a status light (green, yellow, red, and why), what it is doing now, where it is, and a 6-hour graph of its XP or work by skill. Each agent's Details page adds a map of where it is now, a 24-hour graph, its skills and its recent log with keys masked. Agents can leave questions in an "Asks for you" inbox and get answers back as files. There is a phone layout too. One Node process with zero dependencies, bound to 127.0.0.1, read-only toward agents. Adapters plug agents in. Midnight City is built in, any program that prints JSON or writes a status file also works, and a fake fleet gives a working demo in one command. Use for "a dashboard for my agents", "see all my bots on one page", "is my agent stuck", "monitor my Midnight City agents", "watch my fleet from my phone", or "keep a dashboard running".
+---
+
+# fleet-dashboard
+
+**What it is.** One page for every agent you run. [`scripts/deck.mjs`](scripts/deck.mjs) is a small web server plus a sampler, in one Node process with no dependencies:
+
+- **The sampler** reads each agent once every few minutes through its **adapter** and appends one line to a history file. It is the only part that talks to agents.
+- **The page** is built from files only: that history, each agent's log, its PAUSE file, and the asks folder. Opening it ten times costs your agents nothing.
+
+What you see:
+
+| Where | What |
+|---|---|
+| **Main page** `/` | A glance band (how many agents are green, yellow or red; who needs a look and why; XP in 6 h; open asks). **One card per agent**: a generated sigil, name, status light, what it's doing now, where it is, a 6-hour graph (one bar per 15 min, stacked by skill), its top two skills and its 6 h total. The main agent comes first, then the rest by 6 h output. Below the cards, the whole fleet's last 24 hours. |
+| **Details** `/agent?key=…` | The light and the reason for it, counters, the agent's 24-hour graph, **its own map** (every place named, only its place lit), its skills, and the last 30 log lines with keys and home paths masked |
+| **Asks for you** | Questions your agents left for you, with their draft answer. You send the draft, write your own, or skip. Each choice asks you to confirm first |
+| **Phone** `/m` | The same cards and asks in one column with two tabs. You can add it to your home screen |
+
+![The demo, desk layout](assets/demo-desk-1280.png)
+
+**The light.** Red: the log has been quiet longer than `staleMinutes`, the log is missing, or readings stopped (for agents with no log). Yellow: paused (a PAUSE file exists), the last read failed (the reason is shown), 3 or more warning lines in 15 minutes, or no reading yet. Otherwise green. The card says why in plain words.
+
+**Not covered:** controlling agents. There is no pause button, no chat, no "send". The dashboard only **writes** answer files for asks. Also not covered: alerts and paging (pair it with a scheduled check if you need one), and agents spread over many machines (one dashboard reads files on one machine).
+
+## When to use
+
+- Someone runs more than one agent (bots, game agents, coding agents, scrapers) and wants to see them all on one page instead of tailing logs.
+- They want to know at a glance which agent is stuck, silent or failing, and why.
+- They play Midnight City with self-hosted agents and want XP graphs and a map of where each agent is.
+- They want to check on their agents from a phone without opening anything to the internet.
+
+## Steps
+
+### 1. Try it (no setup)
+
+```sh
+node --version                                   # 20 or newer
+node <this skill>/scripts/deck.mjs --demo        # then open http://localhost:7700
+```
+
+The demo builds a made-up crew of 8 agents in an invented harbour town, in a temporary folder, with 26 hours of history. Everything in it is invented. It shows all three lights: one agent paused, one with warnings, one gone silent. It also has two open asks and one agent whose history starts late. Ctrl-C ends it and removes the folder. `--port 7800` picks another port.
+
+Run the self-test once on the machine it will live on:
+
+```sh
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 138 ok, 0 failed (about 5 seconds)
+```
+
+### 2. Copy it out and write the config
+
+```sh
+cp -R <this skill>/scripts ~/fleet-dashboard && cd ~/fleet-dashboard
+cp fleet.example.json fleet.json
+```
+
+One entry per agent. Every field is in [references/config.md](references/config.md). The parts that matter:
+
+| Field | What it does |
+|---|---|
+| `key` | Short id in URLs and files: lowercase letters, digits, `-`, `_`. Changing it starts a new history |
+| `name` | What the page shows |
+| `main` | `true` for at most one agent: it goes first and its sigil is brass |
+| `adapter` | How to read this agent: `midnight-city`, `command`, `file` (or `fake`, demo only) |
+| `log` | The agent's log file (optional but recommended). Its age drives the red light; the last 30 lines show on Details |
+| `pauseFile` | If this file exists, the agent counts as paused (yellow, not red, when quiet) |
+| `staleMinutes` | How long the log may stay quiet before the light goes red (default 30). Set it above the longest quiet stretch the agent normally has |
+| `warnPattern` | A regular expression for warning lines; 3 in 15 minutes turns the light yellow |
+| `logCounters` | Numbers to pull from the log, e.g. `{ "coins": "coins=(\\d+)" }`: the last match is shown |
+
+### 3. Plug in your agents
+
+Pick the adapter that fits. Details and the exact JSON in [references/adapters.md](references/adapters.md).
+
+- **Midnight City** (`"adapter": "midnight-city"`): give it the City skill folder and the agent id. Every round it makes **one read-only call**, `progression <agentId>`, through the City's own helper, from that folder. It reads XP per skill, what the agent is doing, and which space it is in. It never connects, never acts, and never reads your `.env`. The map is the City's districts with Central's buildings inside. If you run [city-driver-starter](../city-driver-starter/), point `log` and `pauseFile` at its folder. See [references/midnight-city.md](references/midnight-city.md).
+- **Any agent with a status command** (`"command"`): the dashboard runs your program (a list, no shell) and reads one JSON object from its output: `{ "xp": {…}, "doing": {…}, "position": {…}, "counters": {…} }`. Every field is optional.
+- **Any agent that can write a file** (`"file"`): the agent keeps a small `status.json` up to date. A file older than `maxAgeMinutes` counts as a failed read.
+- **Something else** (another game, a framework with an API): write an adapter. It is one small module with `check`, `sample` and, if you like, `map`. The contract is in [references/adapters.md](references/adapters.md).
+
+Then check it. This reads each agent once and writes nothing:
+
+```sh
+node deck.mjs --config fleet.json --check
+#   ✓ scout (midnight-city): 6 skill(s), doing "gather resource", at Forest, log found
+```
+
+Fix every ✗ before going on. The reasons are the adapter's own words, masked.
+
+### 4. Run it
+
+```sh
+node deck.mjs --config fleet.json                # http://localhost:7700  ·  phone layout: /m
+```
+
+The first graphs need two readings (one interval). History is kept `keepDays` (default 7) in `dataDir/history/`, one file per day.
+
+### 5. Keep it running (always on)
+
+[`scripts/install.mjs`](scripts/install.mjs) writes the service file for you. It checks the config first, never runs as root, and starts nothing unless you say `--start`. With no `--write` or `--start` it only prints the file:
+
+```sh
+# macOS (launchd: starts at login, restarts if it stops)
+node install.mjs --launchd --config ~/fleet-dashboard/fleet.json            # look at it
+node install.mjs --launchd --config ~/fleet-dashboard/fleet.json --start    # write local.fleet-dashboard.plist to your LaunchAgents folder and start it
+
+# Linux (systemd user service)
+node install.mjs --systemd --config ~/fleet-dashboard/fleet.json --start    # ~/.config/systemd/user/fleet-dashboard.service
+loginctl enable-linger                                                      # keep it running while you're logged out
+
+# stop and remove (prints the commands; your data stays)
+node install.mjs --launchd --uninstall
+```
+
+The service runs the copy in `~/fleet-dashboard`, not the one inside this skill, so updating the skill doesn't change a running dashboard. After you edit `fleet.json`, restart the service. Details and logs: [references/always-on.md](references/always-on.md).
+
+### 6. Optional: your phone
+
+The dashboard only listens on 127.0.0.1, and it should stay that way. To reach it from a phone, use a **private** network you already trust (a mesh VPN you sign in to) and put its proxy in front: one that serves a local port only to your own devices and adds a header naming the signed-in user. **Never** use a public tunnel. Then tell the dashboard which host and which logins to accept:
+
+```json
+"access": { "hosts": ["<the host name your phone uses>"], "loginHeader": "<the header your proxy sets>", "allowLogins": ["you@example.com"] }
+```
+
+Any other Host gets 421, and a login that isn't listed gets 403. See [references/always-on.md](references/always-on.md#phone).
+
+### 7. Optional: asks
+
+Set `"asksDir"`. An agent that wants your decision writes `<asksDir>/<id>.json`. The dashboard shows it under "Asks for you". Your answer becomes `<asksDir>/answers/<id>.json`, written once and never changed. The agent reads the answer and **applies its own rules** before acting on it. The file format and an example agent loop are in [references/asks.md](references/asks.md).
+
+## Safety rules
+
+- **Read-only toward agents.** Adapters read; the dashboard has no route that acts on an agent. The one thing it writes outside its own data folder is an answer file, and only after you confirm on the page.
+- **Localhost only.** It binds 127.0.0.1 and checks the Host header, which also blocks DNS-rebinding tricks. Reach it from elsewhere only through a private proxy with a login allow list (step 6). Never put it on the public internet: it shows your agents' logs and places.
+- **Keys stay where they are.** The Midnight City adapter runs the City's helper from its own folder with only `PATH` and `HOME`. The helper reads its own `.env`; the dashboard never does. The command adapter passes only `PATH`, `HOME` and the variable **names** you list. Never put a key in `fleet.json`.
+- **Everything shown is masked**: log lines and read errors go through a masker (key=value secrets, bearer tokens, common key shapes, JWTs, long tokens, seed-phrase-like word runs, home folder names). It is a net, not a guarantee. Keep secrets out of logs in the first place.
+- **The page can't run anything it didn't ship with**: a strict Content-Security-Policy (no inline script, no outside requests), text inserted as text only, `no-store` caching, and POSTs need a custom header and the same origin.
+- **One controller per agent still applies.** The dashboard doesn't control agents, so it never fights your driver. Don't add a control button by letting a model choose actions.
+- **Screenshots:** before you share one, check that it shows no ids, places or names you mind being public. For posts, use the demo.
+
+## Report back
+
+When you set this up for someone, tell them:
+
+- the demo ran (or the self-test line);
+- each agent's adapter and the `--check` line (✓ or ✗ and why);
+- the URL, the port, and where history and the dashboard's own log (`dataDir/deck.log`) live;
+- whether it's always-on (launchd or systemd, and the label), and how to stop it;
+- whether phone access is on, through what, and which logins are allowed;
+- any agent whose light isn't green after the first 10 minutes, with the reason the card gives.
+
+## More
+
+- [references/config.md](references/config.md): every config field
+- [references/adapters.md](references/adapters.md): the adapter contract, the Sample and Map shapes, the built-in adapters, writing your own
+- [references/midnight-city.md](references/midnight-city.md): what the Midnight City adapter reads, its map, using it with city-driver-starter
+- [references/asks.md](references/asks.md): the asks inbox, file by file, with an example
+- [references/always-on.md](references/always-on.md): launchd, systemd, logs, updating, phone access
+- [references/api.md](references/api.md): the JSON routes and the history file format, for building on top
+
+## Status
+
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 138/138 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). systemd unit generated and unit-tested, not yet run on a Linux machine. Not yet tried by a fresh agent with only this folder. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.

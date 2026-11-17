@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#110e16">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fleet">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Fleet dashboard</title>
+<link rel="stylesheet" href="/deck.css">
+</head>
+<body class="phone" data-from="m">
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">◆</span> <span id="title">Fleet dashboard</span></div>
+  <div class="top-actions"><span id="updated">loading…</span></div>
+</header>
+<main>
+  <section class="view" id="v-fleet" role="tabpanel" aria-label="Fleet">
+    <div class="glance" id="glance" aria-busy="true" aria-label="At a glance">
+      <section class="g-tile"><div class="g-k">Agents</div><div class="sk-line w60"></div></section>
+      <section class="g-tile"><div class="g-k">Needs a look</div><div class="sk-line w60"></div></section>
+    </div>
+    <section class="area-roster" id="roster" data-from="m" aria-label="Agents"></section>
+    <section id="output" aria-label="Output, last 24 hours"></section>
+    <p class="foot muted"><a href="/">Desk view</a></p>
+  </section>
+  <section class="view" id="v-asks" role="tabpanel" aria-label="Asks for you" hidden>
+    <h2 class="sec">Asks for you</h2>
+    <div id="askList"><p class="muted">loading…</p></div>
+  </section>
+</main>
+<nav class="tabbar" role="tablist">
+  <button class="tabb on" data-v="fleet" type="button" role="tab" aria-selected="true"><span class="ti" aria-hidden="true">◆</span><span>Fleet</span></button>
+  <button class="tabb" data-v="asks" type="button" role="tab" aria-selected="false"><span class="ti" aria-hidden="true">?</span><span>Asks for you</span><span class="tbadge" id="askBadge" hidden></span></button>
+</nav>
+<script src="/common.js"></script>
+<script src="/cards.js"></script>
+<script src="/asks.js"></script>
+<script src="/glance.js"></script>
+<script src="/graph.js"></script>
+</body>
+</html>

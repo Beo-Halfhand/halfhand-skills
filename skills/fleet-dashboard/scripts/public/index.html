@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#110e16">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Fleet dashboard</title>
+<link rel="stylesheet" href="/deck.css">
+</head>
+<body class="desk">
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">◆</span> <span id="title">Fleet dashboard</span> <span class="ver" id="ver"></span></div>
+  <div class="top-actions"><span id="updated">loading…</span><a href="/m">Phone view</a></div>
+</header>
+<div class="glance" id="glance" aria-busy="true" aria-label="At a glance">
+  <section class="g-tile"><div class="g-k">Agents</div><div class="sk-line w60"></div></section>
+  <section class="g-tile"><div class="g-k">Needs a look</div><div class="sk-line w60"></div></section>
+  <section class="g-tile"><div class="g-k">XP · last 6 h</div><div class="sk-line w60"></div></section>
+  <section class="g-tile"><div class="g-k">Asks for you</div><div class="sk-line w60"></div></section>
+</div>
+<main class="layout">
+  <aside class="panel area-asks" id="asks" aria-label="Asks for you">
+    <h2>Asks for you</h2>
+    <div id="askList"><p class="muted">loading…</p></div>
+  </aside>
+  <section class="area-roster" id="roster" aria-label="Agents"></section>
+  <section class="area-output" id="output" aria-label="Output, last 24 hours"></section>
+</main>
+<script src="/common.js"></script>
+<script src="/cards.js"></script>
+<script src="/asks.js"></script>
+<script src="/glance.js"></script>
+<script src="/graph.js"></script>
+</body>
+</html>

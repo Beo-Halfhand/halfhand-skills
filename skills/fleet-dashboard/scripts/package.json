@@ -1,0 +1,11 @@
+{
+  "name": "fleet-dashboard",
+  "version": "0.1.0",
+  "description": "One page for every agent you run: a card per agent with its 6-hour graph, a map of where it is, questions it asked you, and a phone view. Zero dependencies; plug in your agents with adapters.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": { "fleet-dashboard": "deck.mjs" },
+  "scripts": { "demo": "node deck.mjs --demo", "start": "node deck.mjs --config fleet.json", "test": "node selftest.mjs" },
+  "engines": { "node": ">=20" }
+}

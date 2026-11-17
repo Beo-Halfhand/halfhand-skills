@@ -1,0 +1,36 @@
+{
+  "title": "My fleet",
+  "port": 7700,
+  "dataDir": "./fleet-data",
+  "asksDir": "./asks",
+  "sampleMinutes": 5,
+  "keepDays": 7,
+  "agents": [
+    {
+      "key": "scout",
+      "name": "Scout",
+      "main": true,
+      "adapter": "midnight-city",
+      "midnight-city": { "skillDir": "~/skills/midnight-city-direct-control", "agentId": "your-agent-id-from-claimable" },
+      "log": "~/my-driver/log.jsonl",
+      "pauseFile": "~/my-driver/PAUSE",
+      "staleMinutes": 30,
+      "warnPattern": "\"event\":\"(failed|backoff|giving_up|config_error)\""
+    },
+    {
+      "key": "helper",
+      "name": "Helper bot",
+      "adapter": "command",
+      "command": { "run": ["node", "status.mjs", "--json"], "cwd": "~/agents/helper" },
+      "log": "~/agents/helper/helper.log",
+      "logCounters": { "tasks": "tasks_done=(\\d+)" },
+      "warnPattern": "\\b(WARN|ERROR)\\b"
+    },
+    {
+      "key": "notes",
+      "name": "Note taker",
+      "adapter": "file",
+      "file": { "path": "~/agents/notes/status.json", "maxAgeMinutes": 20 }
+    }
+  ]
+}

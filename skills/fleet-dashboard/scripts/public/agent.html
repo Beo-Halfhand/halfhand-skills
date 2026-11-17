@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#110e16">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Agent · Fleet dashboard</title>
+<link rel="stylesheet" href="/deck.css">
+</head>
+<body class="desk">
+<header class="top">
+  <a class="back" href="/" id="back">‹ Fleet</a>
+  <div class="who"><span class="dot" id="dot" aria-hidden="true"></span><strong id="name">…</strong></div>
+  <div class="top-actions"><span id="updated">loading…</span></div>
+</header>
+<main class="apage">
+  <section class="panel a-head" id="head" aria-label="At a glance"><div class="sk-line w60"></div><div class="sk-line w80"></div></section>
+  <section class="area-output" id="output" aria-label="Output, last 24 hours"></section>
+  <div class="a-left">
+    <section class="panel am" id="where" aria-label="Where now"><div class="sk-line w80"></div><div class="sk-line w60"></div></section>
+  </div>
+  <section class="panel" id="skills" aria-label="Skills"><h2>Skills</h2><div class="sk-line w80"></div></section>
+  <section class="panel a-log" id="log" aria-label="Recent log"><h2>Recent log</h2><div class="sk-line w80"></div></section>
+  <p class="foot muted">Read-only. The dashboard never acts on an agent; it only writes answers to asks.</p>
+</main>
+<script src="/common.js"></script>
+<script src="/cards.js"></script>
+<script src="/map.js"></script>
+<script src="/agent.js"></script>
+<script src="/graph.js"></script>
+</body>
+</html>
