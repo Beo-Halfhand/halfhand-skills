@@ -13,6 +13,7 @@
     "agents",
     "ci",
     "dashboard",
+    "experiments",
     "game",
     "layout",
     "logging",

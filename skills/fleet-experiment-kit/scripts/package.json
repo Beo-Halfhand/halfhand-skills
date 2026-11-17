@@ -1,0 +1,11 @@
+{
+  "name": "fleet-experiment-kit",
+  "version": "0.1.0",
+  "description": "Run agents against each other and judge them on outcomes: a register with bars written first, head-to-head designs, one outcome log that scores only what the world confirmed, a daily raw-output review, and gates that must show they reject. Zero dependencies.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": { "xk": "xk.mjs" },
+  "scripts": { "demo": "node xk.mjs --demo", "gates": "node xk.mjs gates", "test": "node selftest.mjs" },
+  "engines": { "node": ">=20" }
+}
