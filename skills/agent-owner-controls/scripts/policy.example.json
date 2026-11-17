@@ -1,0 +1,15 @@
+{
+  "note": "Owner limits for one agent. The owner edits this file; the agent only reads it. Re-read on every check.",
+  "mode": "shadow",
+  "tz": "America/New_York",
+  "expires": "2027-01-01T00:00:00Z",
+  "spend": { "perAction": 200, "perDay": 2000, "perWeek": 8000 },
+  "allow": ["work", "buy_tool", "sell", "eat", "speak", "take_contract"],
+  "readOnly": ["look", "status"],
+  "needsHuman": ["send_coins", "join_group", "fight"],
+  "neverTo": ["my-other-agent"],
+  "floors": { "food": 2 },
+  "rate": { "speak": { "perHour": 30 } },
+  "perMinute": 12,
+  "onBreach": "refuse"
+}
