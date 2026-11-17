@@ -1,0 +1,12 @@
+{
+  "name": "safe-logs",
+  "version": "0.1.0",
+  "description": "One rule list that masks secrets in output: inside a Node process, as a pipe around any program, or into owner-only daily log files. Fails closed; zero dependencies.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": { "mask-pipe": "mask-pipe.mjs", "count-copies": "count-copies.mjs" },
+  "exports": { "./redact": "./redact.mjs", "./mask-pipe": "./mask-pipe.mjs", "./mask-stdio": "./mask-stdio.mjs", "./mask-stream": "./mask-stream.mjs" },
+  "scripts": { "test": "node selftest.mjs" },
+  "engines": { "node": ">=20" }
+}
