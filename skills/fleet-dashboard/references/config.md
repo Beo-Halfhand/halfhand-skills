@@ -28,7 +28,7 @@ One JSON file. Paths may start with `~/`; relative paths are taken from the fold
 | `adapter` | required | `midnight-city`, `command`, `file`, or `fake` (demo only; can't be mixed with real agents) |
 | `"<adapter>"` | | That adapter's own settings, under its name: `"midnight-city": {…}`, `"command": {…}`, `"file": {…}`. See [adapters.md](adapters.md) |
 | `log` | none | The agent's log. Any text format; a time is read from lines that start with `[ISO time]` or `YYYY-MM-DD HH:MM`, or JSON lines with `t`, `ts`, `time`, `at` or `timestamp`. With no times in the file, its modified time is used |
-| `pauseFile` | none | The file's **existence** means paused. The dashboard never writes it |
+| `pauseFile` | none | The file's **existence** means paused, unless it is JSON with an `until` time that has passed (an expired PAUSE is left in place by city-driver-starter and agent-owner-controls, and stops counting). No `until`, an empty file or one that isn't JSON: paused until deleted. The dashboard never writes it |
 | `staleMinutes` | `30` | Quiet log (or, with no log, no good reading) for longer than this = red. Agents that legitimately go quiet for an hour need a bigger number |
 | `warnPattern` | none | Regex for warning lines. 3 or more in the last 15 minutes = yellow. With no times in the log, the last 50 lines are counted |
 | `logCounters` | none | `{ "name": "regex with (one group)" }`. The last match in the log is shown on Details. Adapter counters with the same name are overridden |

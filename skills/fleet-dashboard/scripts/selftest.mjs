@@ -208,6 +208,15 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   check('place: dropped when older than 20 minutes', agentStatus(a, good, NOW + 15 * MIN, 5).place === null);
   log(45); check('red: log quiet longer than staleMinutes', (() => { const s = agentStatus(a, good, NOW, 5); return s.light === 'red' && s.why[0] === 'log quiet 45 min'; })());
   fs.writeFileSync(a.pauseFile, ''); check('yellow, not red: paused agents are allowed a quiet log', (() => { const s = agentStatus(a, good, NOW, 5); return s.light === 'yellow' && s.doing.label === 'paused'; })());
+  const P = (o) => fs.writeFileSync(a.pauseFile, JSON.stringify(o));
+  P({ by: 'owner', at: new Date(NOW - 60 * MIN).toISOString(), until: new Date(NOW + 10 * MIN).toISOString() });
+  check('yellow: a PAUSE whose until is still ahead', (() => { const s = agentStatus(a, good, NOW, 5); return s.light === 'yellow' && s.paused === true; })());
+  P({ by: 'owner', at: new Date(NOW - 60 * MIN).toISOString(), until: new Date(NOW - MIN).toISOString() });
+  check('an expired PAUSE (left in place) no longer counts: not paused, quiet log is red again', (() => { const s = agentStatus(a, good, NOW, 5); return s.paused === false && s.light === 'red' && !s.why.includes('paused') && s.doing?.label !== 'paused'; })());
+  log(2); check('an expired PAUSE with a fresh log is green', (() => { const s = agentStatus(a, good, NOW, 5); return s.light === 'green' && s.paused === false; })());
+  log(45);
+  P({ by: 'owner', until: 'tomorrow-ish' }); check('a PAUSE with an until that is not a date stays paused', agentStatus(a, good, NOW, 5).paused === true);
+  fs.writeFileSync(a.pauseFile, 'not json'); check('a PAUSE that is not JSON stays paused', agentStatus(a, good, NOW, 5).paused === true);
   fs.rmSync(a.pauseFile); fs.rmSync(a.log); check('red: the configured log is missing', agentStatus(a, good, NOW, 5).why.includes('no log at the configured path'));
   log(1, [1, 2, 3].map((k) => `[${new Date(NOW - k * MIN).toISOString()}] WARN x`)); check('yellow: 3 warnings in 15 minutes', agentStatus(a, good, NOW, 5).why.includes('3 warnings in 15 min'));
   log(1); check('yellow: the last read failed (with its reason)', agentStatus(a, [...good, r(NOW - MIN, { err: 'helper timed out' })], NOW, 5).why.includes('last read failed: helper timed out'));

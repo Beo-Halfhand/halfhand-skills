@@ -10,7 +10,16 @@ export const PLACE_MAX_AGE = 20 * 60_000;
 // Seven colours that stay apart from each other and from the panels; skills past seven share "other".
 export const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
 export const OTHER = '#6e6680';
-const exists = (f) => { try { fs.accessSync(f); return true; } catch { return false; } };
+// Paused = a PAUSE file exists and its `until` (if it has one) hasn't passed. Same rule as city-driver-starter's driver
+// and agent-owner-controls' isPaused(): an expired PAUSE is left in place on purpose and simply stops counting.
+// No `until`, an empty file, or a file that isn't JSON: paused until someone deletes it.
+export function pausedNow(file, now) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8').trim(); } catch { return false; }
+  let until = NaN;
+  try { const p = raw ? JSON.parse(raw) : null; if (p && typeof p === 'object' && p.until) until = Date.parse(p.until); } catch { /* not JSON: paused */ }
+  return !(Number.isFinite(until) && now > until);
+}
 const mins = (ms) => Math.round(ms / 60_000);
 const span = (m) => (m < 120 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
 
@@ -32,7 +41,7 @@ export function skillColors(config, recs, now) {
 
 export function agentStatus(a, recs, now, sampleMinutes) {
   const lf = logFacts(a, now);
-  const paused = !!(a.pauseFile && exists(a.pauseFile));
+  const paused = Boolean(a.pauseFile && pausedNow(a.pauseFile, now));
   const last = latest(recs, a.key, Math.max(PLACE_MAX_AGE, 3 * sampleMinutes * 60_000), now);
   const good = lastGood(recs, a.key);
   const why = []; let light = 'green';

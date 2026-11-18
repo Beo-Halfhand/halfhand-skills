@@ -41,7 +41,7 @@ If the agent runs on the [city-driver-starter](../../city-driver-starter/) loop,
 "warnPattern": "\"event\":\"(failed|backoff|giving_up|config_error|skill_updated)\""
 ```
 
-The starter's log lines are JSON with a `t` time, so the dashboard reads their age directly. The PAUSE file makes a paused driver yellow, not red. Warnings catch a driver that keeps failing.
+The starter's log lines are JSON with a `t` time, so the dashboard reads their age directly. The PAUSE file makes a paused driver yellow, not red, until the `until` time in it passes. Warnings catch a driver that keeps failing.
 
 ## Skill colours
 

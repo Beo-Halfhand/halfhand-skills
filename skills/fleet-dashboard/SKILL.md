@@ -21,7 +21,7 @@ What you see:
 
 ![The demo, desk layout](assets/demo-desk-1280.png)
 
-**The light.** Red: the log has been quiet longer than `staleMinutes`, the log is missing, or readings stopped (for agents with no log). Yellow: paused (a PAUSE file exists), the last read failed (the reason is shown), 3 or more warning lines in 15 minutes, or no reading yet. Otherwise green. The card says why in plain words.
+**The light.** Red: the log has been quiet longer than `staleMinutes`, the log is missing, or readings stopped (for agents with no log). Yellow: paused (a PAUSE file exists and its `until`, if it has one, hasn't passed), the last read failed (the reason is shown), 3 or more warning lines in 15 minutes, or no reading yet. Otherwise green. The card says why in plain words.
 
 **Not covered:** controlling agents. There is no pause button, no chat, no "send". The dashboard only **writes** answer files for asks. Also not covered: alerts and paging (pair it with a scheduled check if you need one), and agents spread over many machines (one dashboard reads files on one machine).
 
@@ -48,8 +48,8 @@ The demo builds a made-up crew of 8 agents in an invented harbour town, in a tem
 Run the self-test once on the machine it will live on:
 
 ```sh
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 140 ok, 0 failed on macOS (about 5 seconds)
-                                                 # Linux: 139, or 140 when systemd-analyze is installed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 145 ok, 0 failed on macOS (about 5 seconds)
+                                                 # Linux: 144, or 145 when systemd-analyze is installed
 ```
 
 ### 2. Copy it out and write the config
@@ -68,7 +68,7 @@ One entry per agent. Every field is in [references/config.md](references/config.
 | `main` | `true` for at most one agent: it goes first and its sigil is brass |
 | `adapter` | How to read this agent: `midnight-city`, `command`, `file` (or `fake`, demo only) |
 | `log` | The agent's log file (optional but recommended). Its age drives the red light; the last 30 lines show on Details |
-| `pauseFile` | If this file exists, the agent counts as paused (yellow, not red, when quiet) |
+| `pauseFile` | If this file exists, the agent counts as paused (yellow, not red, when quiet), until the `until` time inside it passes. An expired PAUSE is ignored |
 | `staleMinutes` | How long the log may stay quiet before the light goes red (default 30). Set it above the longest quiet stretch the agent normally has |
 | `warnPattern` | A regular expression for warning lines; 3 in 15 minutes turns the light yellow |
 | `logCounters` | Numbers to pull from the log, e.g. `{ "coins": "coins=(\\d+)" }`: the last match is shown |
@@ -168,4 +168,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 140/140 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip. The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 145/145 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip. The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
