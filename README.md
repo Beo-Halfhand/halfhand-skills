@@ -33,6 +33,7 @@ When a skill needs a real tool, the tool lives in its own repo and the skill poi
 | Skill | What it does | Status | Tested on |
 |---|---|---|---|
 | [city-driver-starter](skills/city-driver-starter/) | A first driver for your own City agent: read the City, pick a job, act once, step aside when you write a PAUSE file, and log only what the City confirmed. Runs on the City's own direct-control skill, no dependencies. A local model or any AI can write journal lines from facts; it never presses a button | in development | City direct-control skill 2026-11-06, Node 26, macOS arm64, a fake City (not yet a live agent) |
+| [honest-agent-guards](skills/honest-agent-guards/) | Honesty checks in front of a talking agent's send: a banned list you edit while it runs (claims, and places that must be on your map) and the agent's own state (its real levels, gear and counts; no invented crafting, trading, owning, other skills or weather). A refused line gets one redraft with the reason, then the bad sentences are dropped, else nothing is sent. Zero dependencies; `check`, `scan` and `list` on the command line | in development | Node 26, macOS arm64; Node 22, Debian 12 (fresh-agent test); 2,034 lines a City fleet really sent |
 
 Status means: **in development** (being written), **tested** (a fresh agent with only the folder did the task), **released** (tested, leak-checked and public).
 

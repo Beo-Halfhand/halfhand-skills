@@ -14,6 +14,8 @@ jobs:
         run: node tools/check.mjs
       - name: city-driver-starter self-test (fake City, no network)
         run: node skills/city-driver-starter/scripts/selftest.mjs
+      - name: honest-agent-guards self-test (no model, no network)
+        run: node skills/honest-agent-guards/scripts/selftest.mjs
       - name: fleet-dashboard self-test (fake fleet, no network)
         run: node skills/fleet-dashboard/scripts/selftest.mjs
       - name: safe-logs self-test (no network)

@@ -1,7 +1,7 @@
 {
   "name": "halfhand",
   "version": "0.7.0",
-  "description": "Skills from the builds at halfhand.dev: fit-check checks pages for text-fit bugs before they ship, prepublish-leak-check finds secrets and setup details before anything is published, dust-wallet sets up a Midnight wallet that pays its own fees in DUST, capped-cage explains the invariants and attack tests of a contract that holds funds next to an operator key, page-watch reports stale or broken public pages on a schedule, sealed-count-proof shows how to prove a count over sealed values on Midnight and test that cheats are refused by the circuit, city-driver-starter sets up a first driver for your own Midnight City agent that respects a pause and logs only what the City confirmed, fleet-dashboard sets up one private page that shows every agent you run, with a status light, its job, the last thing it did, a graph and a map per agent, safe-logs keeps secrets out of what programs print and save, mirrored-workspace sets up tmux tabs an AI can read, masked before they reach disk, agent-owner-controls gives the owner pause, ask, handback and a policy check through plain files, fleet-experiment-kit runs agents against each other and judges them on confirmed outcomes, and agent-memory-vault sets up a markdown memory vault any assistant can use.",
+  "description": "Skills from the builds at halfhand.dev: fit-check checks pages for text-fit bugs before they ship, prepublish-leak-check finds secrets and setup details before anything is published, dust-wallet sets up a Midnight wallet that pays its own fees in DUST, capped-cage explains the invariants and attack tests of a contract that holds funds next to an operator key, page-watch reports stale or broken public pages on a schedule, sealed-count-proof shows how to prove a count over sealed values on Midnight and test that cheats are refused by the circuit, city-driver-starter sets up a first driver for your own Midnight City agent that respects a pause and logs only what the City confirmed, fleet-dashboard sets up one private page that shows every agent you run, with a status light, its job, the last thing it did, a graph and a map per agent, safe-logs keeps secrets out of what programs print and save, mirrored-workspace sets up tmux tabs an AI can read, masked before they reach disk, agent-owner-controls gives the owner pause, ask, handback and a policy check through plain files, fleet-experiment-kit runs agents against each other and judges them on confirmed outcomes, agent-memory-vault sets up a markdown memory vault any assistant can use, and honest-agent-guards checks every line a talking agent wants to send against a banned list and its own state.",
   "author": {
     "name": "Beo Halfhand",
     "url": "https://halfhand.dev"
@@ -15,6 +15,7 @@
     "dashboard",
     "experiments",
     "game",
+    "honesty",
     "layout",
     "logging",
     "memory",
