@@ -1,0 +1,9 @@
+{
+  "specialty": "woodcutting",
+  "levels": { "woodcutting": 9, "hacking": 4 },
+  "inv": { "cinder_axe": 1, "wood_log": 40, "meme_coin": 12 },
+  "crafts": [],
+  "trades": ["meme coins", "food"],
+  "ownOk": [],
+  "world": false
+}
