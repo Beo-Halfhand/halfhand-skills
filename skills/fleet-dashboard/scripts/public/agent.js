@@ -15,8 +15,9 @@
     if (a.lastLogAt) facts.push(h('span', {}, 'log ', h('b', {}, ago(a.lastLogAt))));
     facts.push(h('span', {}, 'last reading ', h('b', {}, a.sampleAt ? ago(a.sampleAt) : 'none yet')));
     return [
+      window.fdCards.jobEl(a),
       h('div', { class: 'a-now' }, h('span', { class: 'muted' }, 'Doing now: '), window.fdCards.doing(a)),
-      why, h('div', { class: 'a-facts' }, ...facts),
+      why, window.fdCards.jobLine(a), h('div', { class: 'a-facts' }, ...facts),
       a.links?.length ? h('div', { class: 'a-links' }, ...a.links.map((l) => h('a', { href: l.url, rel: 'noopener noreferrer', target: '_blank' }, `${l.label} ↗`))) : null,
     ];
   }
@@ -40,7 +41,7 @@
       $('updated').textContent = `as of ${clock(Date.now())} ${zoneName()}`;
     } catch (e) {
       $('name').textContent = KEY || 'unknown agent';
-      $('head').replaceChildren(h('p', {}, e.message === 'HTTP 404' ? `No agent "${KEY}" in this dashboard.` : 'Could not load this agent: ' + e.message));
+      $('head').replaceChildren(h('p', {}, e.message === 'HTTP 404' ? `No agent "${KEY}" on this dashboard (or it is retired).` : 'Could not load this agent: ' + e.message));
     }
   }
   load(); setInterval(() => { if (!document.hidden) load(); }, 15_000);

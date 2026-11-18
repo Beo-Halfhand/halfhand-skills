@@ -43,6 +43,20 @@ If the agent runs on the [city-driver-starter](../../city-driver-starter/) loop,
 
 The starter's log lines are JSON with a `t` time, so the dashboard reads their age directly. The PAUSE file makes a paused driver yellow, not red, until the `until` time in it passes. Warnings catch a driver that keeps failing.
 
+For the card's job and "Last:" line, add these two (they are in `fleet.example.json`). "Last:" then shows only actions **the City confirmed** (`"result":"confirmed"`), never a failed or pending one, plus an owner's pause:
+
+```json
+"job": { "title": "Woodcutting at the tree stand", "number": { "label": "Woodcutting total", "xp": "woodcutting" } },
+"lastDid": [
+  { "match": "\"event\":\"act\",\"act\":\\[\"(\\w+)\"(?:,\"([\\w-]+)\")?.*\"result\":\"confirmed\"", "say": "$1 $2 (confirmed)" },
+  { "match": "\"event\":\"paused\",\"by\":\"([\\w-]+)\"", "say": "paused by $1" }
+]
+```
+
+A line like `{"t":"…","event":"act","act":["gather","pine_tree"],…,"result":"confirmed"}` becomes "Last: gather pine tree (confirmed) · 3 min ago". The self-test checks this recipe against lines in the starter's format. The adapter itself reads no rank or leaderboard: for a place on a board, write it yourself as `"number": { "label": "Woodcutting board", "value": "#12", "asOf": "Nov 18" }`, or have a `command` adapter return it as a counter and use `"counter": "rank", "as": "rank"`.
+
+To take an agent off the page when you stop running it, create a `RETIRED` file in its folder and point `retiredFile` at it. The dashboard stops reading it at once; nothing else changes.
+
 ## Skill colours
 
 Seven City skills have fixed colours (hacking, mining, fishing, woodcutting, scavenging, smithing, agility), checked against the dark panels, so a skill keeps its colour on every card. Other skills share the "other" grey unless you pin them with `skillColors`.

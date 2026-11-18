@@ -16,7 +16,9 @@ import { mask } from './lib/mask.mjs';
 import { xpInto, strip, stripXp, output, prune, appendRound, makeReader, GAP_EST } from './lib/history.mjs';
 import { timeOf, logFacts } from './lib/logs.mjs';
 import { listAsks, answerAsk } from './lib/asks.mjs';
-import { agentStatus, skillColors, buildFleet, PALETTE } from './lib/fleet.mjs';
+import { agentStatus, skillColors, buildFleet, PALETTE, activeAgents } from './lib/fleet.mjs';
+import { parseJob, numberView, lastDidOf, jobsFromFile, retiredOf } from './lib/jobs.mjs';
+import { round } from './lib/sampler.mjs';
 import { createServer } from './lib/server.mjs';
 import { buildDemo } from './lib/demo.mjs';
 import { launchdPlist, systemdUnit } from './install.mjs';
@@ -232,6 +234,58 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   check('colours: other skills get free palette colours', PALETTE.includes(sc.colors.alpha));
 }
 
+// ── jobs, the last thing done, retired agents ──
+{
+  const pj = (j) => parseJob(j, 'job');
+  check('job: a title is required', pj({ number: { label: 'x', xp: 'mining' } }).errors.some((e) => e.includes('.title')));
+  check('job: the number needs exactly one source', pj({ title: 'T', number: { label: 'x', xp: 'mining', counter: 'coins' } }).errors.some((e) => e.includes('exactly one')) && pj({ title: 'T', number: { label: 'x' } }).errors.length === 1);
+  check('job: an unknown status is refused', pj({ title: 'T', status: 'maybe' }).errors.some((e) => e.includes('status')));
+  check('job: title, slot and status kept, masked and capped', (() => { const j = pj({ title: 'Mining <b>the</b> Quarry ' + 'Q'.repeat(40), slot: 'night', status: 'testing' }).job; return j.title.startsWith('Mining bthe/b Quarry [masked]') && j.slot === 'night' && j.status === 'testing'; })());
+  const good = { xp: { mining: 4_375_104 }, c: { rank: 12 } };
+  check('number: an XP total, shortened', numberView(pj({ title: 'T', number: { label: 'Mining XP', xp: 'mining' } }).job.number, good, {}).value === '4.4M XP');
+  check('number: a counter shown as a rank', numberView(pj({ title: 'T', number: { label: 'Board', counter: 'rank', as: 'rank' } }).job.number, good, good.c).value === '#12');
+  check('number: a value you keep, with its date', (() => { const v = numberView(pj({ title: 'T', number: { label: 'Board', value: '#14', asOf: 'Nov 17' } }).job.number, null, {}); return v.value === '#14' && v.live === false && v.note === 'as of Nov 17'; })());
+  check('number: not read yet says so (never a made-up 0)', (() => { const v = numberView(pj({ title: 'T', number: { label: 'Coins', counter: 'coins' } }).job.number, good, {}); return v.value === '—' && v.note === 'not read yet'; })());
+  const rules = [{ re: /DONE (\w+) block · \+([\d,]+) XP/, say: '$1 block done, +$2 XP' }, { re: /SOLD (\d+) (\w+) to (\S+)/, say: 'sold $1 $2 to $3' }];
+  const L = (m, x) => `[${new Date(NOW - m * MIN).toISOString()}] ${x}`;
+  const lines = [L(30, 'DONE fishing block · +1,200 XP'), L(20, 'SOLD 4 mackerel to someone'), L(10, 'DONE wood_cutting block · +900 XP'), L(2, 'status: fine')];
+  const ld = lastDidOf(lines, rules, timeOf);
+  check('last: the newest line a rule matches, with its time', ld.text === 'wood cutting block done, +900 XP' && ld.t === NOW - 10 * MIN, JSON.stringify(ld));
+  check('last: only the (groups) are copied, and they are masked', lastDidOf([L(1, 'SOLD 2 fish to ' + ['sk', 'live', 'ABCDEFGHIJKLMNOP1234'].join('_') + ' and a secret chat line')], rules, timeOf).text === 'sold 2 fish to [masked]');
+  check('last: no rule or no match → nothing', lastDidOf(lines, [], timeOf) === null && lastDidOf(['plain'], rules, timeOf) === null);
+  const ex = loadConfig(path.join(HERE, 'fleet.example.json'), ADAPTERS).config.agents[0];
+  const J = (o) => JSON.stringify({ t: new Date(NOW).toISOString(), ...o });
+  check('last: the city-driver-starter recipe shows only actions the City confirmed', lastDidOf([J({ event: 'act', act: ['gather', 'pine_tree'], why: 'job', submitted: true, result: 'confirmed' }), J({ event: 'act', act: ['eat'], submitted: true, result: 'failed', reason: 'no food' }), J({ event: 'wait', why: 'mid-action' })], ex.lastDid, timeOf)?.text === 'gather pine tree (confirmed)');
+  const e1 = cfg([{ key: 'a', adapter: 'fake', lastDid: [{ match: '(', say: 'x' }] }]).errors, e2 = cfg([{ key: 'a', adapter: 'fake', lastDid: [{ match: 'x' }] }]).errors, e3 = cfg([{ key: 'a', adapter: 'fake', retired: 3 }]).errors;
+  check('config: a bad lastDid regex, a rule with no words and a retired that is not true or a note are refused', e1.some((e) => e.includes('match')) && e2.some((e) => e.includes('say')) && e3.some((e) => e.includes('retired')));
+
+  const d = tmp('fd-jobs-'), jf = path.join(d, 'jobs.json'), log = path.join(d, 'a.log');
+  fs.writeFileSync(log, lines.join('\n') + '\n');
+  const { config: c } = cfg([{ key: 'a', adapter: 'fake', log, lastDid: [{ match: 'DONE (\\w+) block', say: '$1 block done' }], job: { title: 'Fishing', number: { label: 'Fishing XP', xp: 'fishing' } } },
+    { key: 'b', adapter: 'fake', retired: 'moved on' }, { key: 'c', adapter: 'fake', retiredFile: path.join(d, 'c', 'RETIRED') }], { jobsFile: jf });
+  const recs = [{ t: NOW - 5 * MIN, a: { a: { xp: { fishing: 5000 } } } }];
+  let st = agentStatus(c.agents[0], recs, NOW, 5);
+  check('card: four arguments still work (other skills call agentStatus), with the job from fleet.json', st.job.title === 'Fishing' && st.job.number.value === '5,000 XP' && st.lastDid.text === 'wood cutting block done');
+  fs.writeFileSync(jf, JSON.stringify({ agents: { a: { title: 'Mining now', status: 'staged' }, b: { nope: 1 }, 'Bad Key': { title: 'x' } } }));
+  st = agentStatus(c.agents[0], recs, NOW, 5, jf);
+  check('jobs file: its entry wins over fleet.json, bad entries are dropped', st.job.title === 'Mining now' && st.job.status === 'staged' && Object.keys(jobsFromFile(jf, NOW)).join() === 'a');
+  fs.writeFileSync(jf, JSON.stringify({ agents: { a: { title: 'Smithing' } } })); const later = new Date(Date.now() + 5000); fs.utimesSync(jf, later, later);
+  check('jobs file: re-read after a minute, not before', agentStatus(c.agents[0], recs, NOW + 30_000, 5, jf).job.title === 'Mining now' && agentStatus(c.agents[0], recs, NOW + 61_000, 5, jf).job.title === 'Smithing');
+  fs.writeFileSync(jf, '{ broken'); fs.utimesSync(jf, new Date(Date.now() + 9000), new Date(Date.now() + 9000));
+  check('jobs file: broken → fleet.json\'s own job shows', agentStatus(c.agents[0], recs, NOW + 200_000, 5, jf).job.title === 'Fishing');
+  check('retired: "retired" in fleet.json takes the agent off the page, with its note', activeAgents(c).map((x) => x.key).join() === 'a,c' && retiredOf(c.agents[1]).note === 'moved on');
+  fs.mkdirSync(path.join(d, 'c')); fs.writeFileSync(path.join(d, 'c', 'RETIRED'), 'done with this one\n');
+  const f = buildFleet(c, () => recs, 't', 0, NOW);
+  check('retired: a retiredFile takes effect with no restart; not a card, not counted, listed with its note and date', f.agents.map((x) => x.key).join() === 'a' && f.totals.agents === 1 && f.retired.map((x) => x.key).join() === 'b,c' && f.retired[1].note === 'done with this one' && Number.isFinite(f.retired[1].since));
+  const dd = tmp('fd-ret-'), mark = (k) => path.join(dd, `read-${k}`);
+  const reader = (k, extra) => ({ key: k, adapter: 'command', command: { run: [process.execPath, '-e', `require('fs').writeFileSync(${JSON.stringify(mark(k))}, 'x'); console.log('{}')`], cwd: dd }, ...extra });
+  const { config: rc, errors: re } = cfg([reader('on'), reader('off', { retired: true })], { dataDir: dd });
+  const r = await round(rc, { now: NOW, gapMs: 0 });
+  check('retired: the sampler never reads a retired agent', !re.length && fs.existsSync(mark('on')) && !fs.existsSync(mark('off')) && Object.keys(r.a).join() === 'on', re.join('; '));
+  fs.rmSync(path.join(d, 'c', 'RETIRED'));
+  check('retired: removing the retiredFile brings the agent back', activeAgents(c).map((x) => x.key).join() === 'a,c');
+}
+
 // ── the demo, the server and the pages ──
 {
   const d = tmp('fd-demo-');
@@ -241,6 +295,7 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   check('demo: 8 made-up agents, 5 green, 2 yellow, 1 red', f.agents.length === 8 && f.totals.green === 5 && f.totals.yellow === 2 && f.totals.red === 1, JSON.stringify(f.totals));
   const by = Object.fromEntries(f.agents.map((x) => [x.key, x.strip.bins]));
   check('demo: full 6-hour graphs, Quill\'s gap drawn as estimated, Basil stops, Sable starts late', f.agents.filter((x) => x.strip.bins.filter((b) => b.cov).length >= 22).length === 6 && by.quill.some((b) => b.est) && !by.basil.slice(-4).some((b) => b.cov) && by.sable.filter((b) => b.cov).length <= 10);
+  check('demo: every card has a job and a last thing done; Tansy is retired (no card, not read, named in the strip)', f.agents.every((x) => x.job?.title && x.lastDid?.text) && f.retired.length === 1 && f.retired[0].name === 'Tansy' && !makeReader(config.dataDir)(Date.now() - 3_600_000).some((r) => 'tansy' in r.a), JSON.stringify(f.retired));
   check('demo: 2 open asks', listAsks(config.asksDir, config.agents.map((x) => x.key)).asks.filter((x) => x.open).length === 2);
 
   const server = createServer({ config, records: makeReader(config.dataDir), version: 'test' });
@@ -263,6 +318,7 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   const det = (await req('GET', '/api/agent/wren')).json();
   check('/api/agent/<key>: skills and the last 30 log lines', det.skillsNow.length === 2 && det.log.length === 30 && det.name === 'Wren');
   check('/api/agent/<unknown> → 404', (await req('GET', '/api/agent/nobody')).code === 404);
+  check('a retired agent: /api/agent and /api/output say 404 "retired"; /api/health counts only active agents', (await req('GET', '/api/agent/tansy')).json().error === 'retired' && (await req('GET', '/api/output?key=tansy')).code === 404 && (await req('GET', '/api/health')).json().agents === 8);
   check('/api/output: 48 bars for the fleet or one agent', (await req('GET', '/api/output?key=fleet')).json().bins.length === 48 && (await req('GET', '/api/output?key=moss')).json().name === 'Moss' && (await req('GET', '/api/output?key=zzz')).code === 404);
   const body = { id: 'A101', verdict: 'ok' };
   check('POST /api/ask without X-Deck → 403', (await req('POST', '/api/ask', { body })).code === 403);
@@ -286,7 +342,7 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   // the command line
   const run = (args) => new Promise((resolve) => execFile(process.execPath, [path.join(HERE, 'deck.mjs'), ...args], { timeout: 60_000 }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr })));
   const ck = await run(['--config', file, '--check']);
-  check('deck.mjs --check: reads each agent once and reports', ck.code === 1 && /config ok: 8 agent/.test(ck.out) && /✓ wren/.test(ck.out) && /✗ basil/.test(ck.out), ck.out.slice(0, 300));
+  check('deck.mjs --check: reads each agent once and reports', ck.code === 1 && /config ok: 9 agent/.test(ck.out) && /✓ wren .*job "Fishing at the Docks", 2 lastDid rule/.test(ck.out) && /✗ basil/.test(ck.out) && /– tansy \(fake\): retired \(moved to the mainland crew \(made up\)\), not read/.test(ck.out), ck.out.slice(0, 300));
   const before = makeReader(config.dataDir)(Date.now() - 3_600_000).length;
   const once = await run(['--config', file, '--once']);
   check('deck.mjs --once: appends one round and exits', once.code === 0 && makeReader(config.dataDir)(Date.now() - 3_600_000).length === before + 1, once.out);

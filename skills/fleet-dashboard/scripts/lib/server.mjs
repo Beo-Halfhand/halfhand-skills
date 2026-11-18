@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFleet, agentDetail, outputFor } from './fleet.mjs';
+import { buildFleet, agentDetail, outputFor, activeAgents } from './fleet.mjs';
+import { retiredOf } from './jobs.mjs';
 import { listAsks, answerAsk } from './asks.mjs';
 
 const PUB = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -51,15 +52,15 @@ export function createServer({ config, records, version, log = () => {} }) {
         const file = PAGES[p] ?? (STATIC.has(p.slice(1)) ? p.slice(1) : null);
         if (file) { res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)], ...SEC_HEADERS }); return res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(path.join(PUB, file))); }
         if (p === '/api/fleet') return send(res, 200, buildFleet(config, records, version, asksOpen()));
-        if (p === '/api/health') { const r = records(Date.now() - 3_600_000); return send(res, 200, { ok: true, version, agents: keys.length, lastRound: r.length ? r[r.length - 1].t : null }); }
+        if (p === '/api/health') { const r = records(Date.now() - 3_600_000); return send(res, 200, { ok: true, version, agents: activeAgents(config).length, lastRound: r.length ? r[r.length - 1].t : null }); }
         if (p === '/api/asks') return send(res, 200, listAsks(config.asksDir, keys));
         if (p === '/api/output') {
           const key = String(url.searchParams.get('key') ?? 'fleet');
-          if (key !== 'fleet' && !byKey(key)) return send(res, 404, { error: 'unknown agent' });
+          if (key !== 'fleet' && (!byKey(key) || retiredOf(byKey(key)))) return send(res, 404, { error: byKey(key) ? 'retired' : 'unknown agent' });
           return send(res, 200, outputFor(config, records, key));
         }
         const m = /^\/api\/agent\/([a-z0-9_-]{1,40})$/.exec(p);
-        if (m) { const a = byKey(m[1]); return a ? send(res, 200, { version, title: config.title, timeZone: config.timeZone, ...agentDetail(config, records, a) }) : send(res, 404, { error: 'unknown agent' }); }
+        if (m) { const a = byKey(m[1]); if (a && retiredOf(a)) return send(res, 404, { error: 'retired' }); return a ? send(res, 200, { version, title: config.title, timeZone: config.timeZone, ...agentDetail(config, records, a) }) : send(res, 404, { error: 'unknown agent' }); }
       }
       if (req.method === 'POST' && p === '/api/ask') {
         if (req.headers['x-deck'] !== '1') return send(res, 403, { error: 'missing X-Deck header' });   // a plain cross-site form can't set it

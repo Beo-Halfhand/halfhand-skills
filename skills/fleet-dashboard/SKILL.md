@@ -1,6 +1,6 @@
 ---
 name: fleet-dashboard
-description: Set up one private web page that shows every AI agent someone runs. Each agent gets a card with a status light (green, yellow, red, and why), what it is doing now, where it is, and a 6-hour graph of its XP or work by skill. Each agent's Details page adds a map of where it is now, a 24-hour graph, its skills and its recent log with keys masked. Agents can leave questions in an "Asks for you" inbox and get answers back as files. There is a phone layout too. One Node process with zero dependencies, bound to 127.0.0.1, read-only toward agents. Adapters plug agents in. Midnight City is built in, any program that prints JSON or writes a status file also works, and a fake fleet gives a working demo in one command. Use for "a dashboard for my agents", "see all my bots on one page", "is my agent stuck", "monitor my Midnight City agents", "watch my fleet from my phone", or "keep a dashboard running".
+description: Set up one private web page that shows every AI agent someone runs. Each agent gets a card with a status light (green, yellow, red, and why), its job in words with one number for it, what it is doing now, where it is, the last thing it did, and a 6-hour graph of its XP or work by skill. Retired agents drop off the cards into one grey strip. Each agent's Details page adds a map of where it is now, a 24-hour graph, its skills and its recent log with keys masked. Agents can leave questions in an "Asks for you" inbox and get answers back as files. There is a phone layout too. One Node process with zero dependencies, bound to 127.0.0.1, read-only toward agents. Adapters plug agents in. Midnight City is built in, any program that prints JSON or writes a status file also works, and a fake fleet gives a working demo in one command. Use for "a dashboard for my agents", "see all my bots on one page", "is my agent stuck", "monitor my Midnight City agents", "watch my fleet from my phone", or "keep a dashboard running".
 ---
 
 # fleet-dashboard
@@ -14,7 +14,7 @@ What you see:
 
 | Where | What |
 |---|---|
-| **Main page** `/` | A glance band (how many agents are green, yellow or red; who needs a look and why; XP in 6 h; open asks). **One card per agent**: a generated sigil, name, status light, what it's doing now, where it is, a 6-hour graph (one bar per 15 min, stacked by skill), its top two skills and its 6 h total. The main agent comes first, then the rest by 6 h output. Below the cards, the whole fleet's last 24 hours. |
+| **Main page** `/` | A glance band (how many agents are green, yellow or red; who needs a look and why; XP in 6 h; open asks). **One card per agent**: a generated sigil, name, status light, **its job** (with its slot, and its status when it isn't live), what it's doing now, where it is, a 6-hour graph (one bar per 15 min, stacked by skill), its top two skills and its 6 h total, then **the job's one number** and **"Last:" the last meaningful thing it did**, with how long ago. The main agent comes first, then the rest by 6 h output. Retired agents get no card, only a name in a grey **Retired** strip under the cards. Below that, the whole fleet's last 24 hours. |
 | **Details** `/agent?key=…` | The light and the reason for it, counters, the agent's 24-hour graph, **its own map** (every place named, only its place lit), its skills, and the last 30 log lines with keys and home paths masked |
 | **Asks for you** | Questions your agents left for you, with their draft answer. You send the draft, write your own, or skip. Each choice asks you to confirm first |
 | **Phone** `/m` | The same cards and asks in one column with two tabs. You can add it to your home screen |
@@ -43,13 +43,13 @@ node <this skill>/scripts/deck.mjs --demo        # then open http://localhost:77
 
 `<this skill>` is the folder that holds this SKILL.md. No browser (a server, an agent)? `curl -s http://localhost:7700/api/fleet` returns what the page draws: each agent's `light`, `why`, `doing` and `place` ([references/api.md](references/api.md)).
 
-The demo builds a made-up crew of 8 agents in an invented harbour town, in a temporary folder, with 26 hours of history. Everything in it is invented. It shows all three lights: one agent paused, one with warnings, one gone silent. It also has two open asks and one agent whose history starts late. Ctrl-C ends it and removes the folder. `--port 7800` picks another port.
+The demo builds a made-up crew of 8 agents in an invented harbour town, in a temporary folder, with 26 hours of history. Everything in it is invented. It shows all three lights: one agent paused, one with warnings, one gone silent. Every agent has a job, a number and a "Last:" line, and a ninth agent is retired, so it shows only in the Retired strip. It also has two open asks and one agent whose history starts late. Ctrl-C ends it and removes the folder. `--port 7800` picks another port.
 
 Run the self-test once on the machine it will live on:
 
 ```sh
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 145 ok, 0 failed on macOS (about 5 seconds)
-                                                 # Linux: 144, or 145 when systemd-analyze is installed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 168 ok, 0 failed on macOS (about 5 seconds)
+                                                 # Linux: 167, or 168 when systemd-analyze is installed
 ```
 
 ### 2. Copy it out and write the config
@@ -72,6 +72,9 @@ One entry per agent. Every field is in [references/config.md](references/config.
 | `staleMinutes` | How long the log may stay quiet before the light goes red (default 30). Set it above the longest quiet stretch the agent normally has |
 | `warnPattern` | A regular expression for warning lines; 3 in 15 minutes turns the light yellow |
 | `logCounters` | Numbers to pull from the log, e.g. `{ "coins": "coins=(\\d+)" }`: the last match is shown |
+| `job` | The job in words and one number for it: `{ "title": "Woodcutting at the tree stand", "slot": "night shift", "number": { "label": "Woodcutting total", "xp": "woodcutting" } }`. The number comes from an XP total (`xp`), a counter (`counter`, `"as": "rank"` shows `#12`) or text you keep up to date (`value`, with `asOf`). A missing reading shows "—, not read yet", never 0 |
+| `lastDid` | What "Last:" reads in the log: rules like `{ "match": "DONE (\\w+) block", "say": "$1 block done" }`. The newest matching line wins, and only the `(groups)` are copied into `say`, masked. **Never capture chat text or anything personal** |
+| `retired` / `retiredFile` | `true` (or a short note), or a file whose existence retires the agent with no restart. A retired agent is never read, never red and never counted; its name sits in the Retired strip. Delete the file to bring it back |
 
 ### 3. Plug in your agents
 
@@ -89,7 +92,9 @@ node deck.mjs --config fleet.json --check
 #   ✓ scout (midnight-city): 6 skill(s), doing "gather resource", at Forest, log found
 ```
 
-Fix every ✗ before going on. The reasons are the adapter's own words, masked.
+Fix every ✗ before going on. The reasons are the adapter's own words, masked. A retired agent shows as `– key: retired, not read`.
+
+**Jobs that change often:** put them in a separate file and set `"jobsFile": "./jobs.json"` at the top level: `{ "agents": { "<key>": { "title": "…", "number": {…} } } }`. The dashboard re-reads it at most once a minute, so a new job shows up without a restart. An entry there wins over that agent's `job` in fleet.json, and a broken file falls back to fleet.json. Details in [references/config.md](references/config.md#job-number-last).
 
 ### 4. Run it
 
@@ -168,4 +173,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 145/145 (config, masking, history maths, logs, asks, all four adapters, lights, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at 360, 768, 1280 and 1920 px on the demo; and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip. The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 168/168 (config, masking, history maths, logs, asks, all four adapters, lights, jobs, "Last:", retired agents, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at all nine widths on the demo's main and phone pages (clean) and Details (two map labels a few pixels too wide at 320 and 1024 px, known); and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip; run again for 0.2.0 (jobs, "Last:" and retired agents). Version 0.2.0 brings the cards in line with the private dashboard it came from (its v0.15.3, 18 November 2026). The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.

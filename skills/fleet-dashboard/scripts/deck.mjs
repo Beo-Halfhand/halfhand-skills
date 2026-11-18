@@ -16,6 +16,8 @@ import { makeReader } from './lib/history.mjs';
 import { round, startSampler } from './lib/sampler.mjs';
 import { createServer } from './lib/server.mjs';
 import { buildDemo, keepLogsMoving } from './lib/demo.mjs';
+import { activeAgents } from './lib/fleet.mjs';
+import { retiredOf } from './lib/jobs.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const VERSION = JSON.parse(fs.readFileSync(path.join(HERE, 'package.json'), 'utf8')).version;
@@ -65,10 +67,12 @@ async function main() {
     console.log(`config ok: ${config.agents.length} agent(s), data in ${config.dataDir}`);
     let bad = 0;
     for (const a of config.agents) {
+      const r = retiredOf(a);
+      if (r) { console.log(`  – ${a.key} (${a.adapter}): retired${r.note ? ` (${r.note})` : ''}, not read`); continue; }
       const s = await sampleOne(a, { now: Date.now() });
       if (s.err) { bad++; console.log(`  ✗ ${a.key} (${a.adapter}): ${s.err}`); continue; }
       const xp = Object.keys(s.xp ?? {}).length, where = s.act?.name ?? s.act?.space;
-      console.log(`  ✓ ${a.key} (${a.adapter}): ${xp} skill(s)${s.act?.label ? `, doing "${s.act.label}"` : ''}${where ? `, at ${where}` : ''}${a.log ? (fs.existsSync(a.log) ? ', log found' : ', LOG NOT FOUND') : ''}`);
+      console.log(`  ✓ ${a.key} (${a.adapter}): ${xp} skill(s)${s.act?.label ? `, doing "${s.act.label}"` : ''}${where ? `, at ${where}` : ''}${a.log ? (fs.existsSync(a.log) ? ', log found' : ', LOG NOT FOUND') : ''}${a.job ? `, job "${a.job.title}"` : ''}${a.lastDid.length ? `, ${a.lastDid.length} lastDid rule(s)` : ''}`);
     }
     process.exit(bad ? 1 : 0);
   }
@@ -88,7 +92,7 @@ async function main() {
     process.exit(1);
   });
   server.listen(config.port, '127.0.0.1', () => {
-    log(`fleet-dashboard v${VERSION} on http://127.0.0.1:${config.port} · ${config.agents.length} agent(s) · sampler ${o.sampler ? `every ${config.sampleMinutes} min` : 'off'}${o.demo ? ' · DEMO (made-up data)' : ''}`);
+    log(`fleet-dashboard v${VERSION} on http://127.0.0.1:${config.port} · ${activeAgents(config).length} agent(s)${config.agents.length > activeAgents(config).length ? ` + ${config.agents.length - activeAgents(config).length} retired` : ''} · sampler ${o.sampler ? `every ${config.sampleMinutes} min` : 'off'}${o.demo ? ' · DEMO (made-up data)' : ''}`);
     if (!process.stdout.isTTY) { console.log(`open http://localhost:${config.port} (phone layout: /m) · check: curl -s http://localhost:${config.port}/api/health`); return; }
     console.log(`\n  open  http://localhost:${config.port}        phone layout  http://localhost:${config.port}/m`);
     if (o.demo) console.log(`  demo files: ${o.keep ? demoDir : 'a temporary folder, removed when you press Ctrl-C (--keep keeps it)'}\n`);

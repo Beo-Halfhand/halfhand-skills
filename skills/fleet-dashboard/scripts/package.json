@@ -1,6 +1,6 @@
 {
   "name": "fleet-dashboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One page for every agent you run: a card per agent with its 6-hour graph, a map of where it is, questions it asked you, and a phone view. Zero dependencies; plug in your agents with adapters.",
   "type": "module",
   "private": true,

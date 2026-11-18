@@ -3,16 +3,18 @@
 // that shares one game account doesn't burst its API. Files older than keepDays are deleted.
 import { appendRound, prune } from './history.mjs';
 import { sampleOne } from '../adapters/index.mjs';
+import { activeAgents } from './fleet.mjs';
 
 export async function round(config, { now = Date.now(), gapMs = 300, log = () => {} } = {}) {
   const rec = { t: now, v: 1, a: {} }; const bad = [];
-  for (const [i, a] of config.agents.entries()) {
+  const agents = activeAgents(config);   // a retired agent is never read
+  for (const [i, a] of agents.entries()) {
     rec.a[a.key] = await sampleOne(a, { now, timeoutMs: 25_000 });
     if (rec.a[a.key].err) bad.push(`${a.key}: ${rec.a[a.key].err}`);
-    if (gapMs && i < config.agents.length - 1) await new Promise((r) => setTimeout(r, gapMs));
+    if (gapMs && i < agents.length - 1) await new Promise((r) => setTimeout(r, gapMs));
   }
   appendRound(config.dataDir, rec);
-  log(`round ${config.agents.length - bad.length}/${config.agents.length} ok in ${((Date.now() - now) / 1000).toFixed(1)} s${bad.length ? ' · failed: ' + bad.join('; ') : ''}`);
+  log(`round ${agents.length - bad.length}/${agents.length} ok in ${((Date.now() - now) / 1000).toFixed(1)} s${bad.length ? ' · failed: ' + bad.join('; ') : ''}`);
   try { for (const f of prune(config.dataDir, config.keepDays, now)) log(`pruned ${f}`); } catch (e) { log(`prune failed: ${e.message}`); }
   return rec;
 }

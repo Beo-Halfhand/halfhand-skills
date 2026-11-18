@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parseJob, parseLastDid } from './jobs.mjs';
 
 export const KEY_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
@@ -32,6 +33,7 @@ export function parseConfig(raw, file, adapters) {
     sampleMinutes: num(c.sampleMinutes, 5, 1, 60, 'sampleMinutes'),
     keepDays: num(c.keepDays, 7, 1, 90, 'keepDays'),
     asksDir: c.asksDir ? expand(c.asksDir, base) : null,
+    jobsFile: c.jobsFile ? expand(c.jobsFile, base) : null,
     timeZone: typeof c.timeZone === 'string' && c.timeZone ? c.timeZone : null,
     skillColors: {},
     access: { hosts: [], loginHeader: null, allowLogins: [] },
@@ -79,6 +81,9 @@ export function parseConfig(raw, file, adapters) {
       pauseFile: a.pauseFile ? expand(a.pauseFile, base) : null,
       staleMinutes: num(a.staleMinutes, 30, 1, 7 * 24 * 60, `${at}.staleMinutes`),
       warnPattern: null, logCounters: {}, links: [],
+      job: null, lastDid: [],
+      retired: a.retired === true || (typeof a.retired === 'string' && a.retired.trim()) ? (a.retired === true ? true : a.retired.trim().slice(0, 160)) : false,
+      retiredFile: a.retiredFile ? expand(a.retiredFile, base) : null,
       opts: a[adapterName] && typeof a[adapterName] === 'object' ? a[adapterName] : {},
       base,
     };
@@ -88,6 +93,9 @@ export function parseConfig(raw, file, adapters) {
       try { const r = new RegExp(String(re)); if (!/\((?!\?)/.test(String(re))) throw new Error('no group'); agent.logCounters[k] = r; }
       catch { errors.push(`${at}.logCounters.${k} must be a regular expression with one (group) around the number`); }
     }
+    if (a.retired !== undefined && typeof a.retired !== 'boolean' && typeof a.retired !== 'string') errors.push(`${at}.retired must be true or a short note`);
+    { const j = parseJob(a.job, `${at}.job`); agent.job = j.job; errors.push(...j.errors); }
+    { const l = parseLastDid(a.lastDid, `${at}.lastDid`); agent.lastDid = l.rules; errors.push(...l.errors); }
     for (const l of Array.isArray(a.links) ? a.links : []) {
       if (l && typeof l.label === 'string' && /^https:\/\//.test(String(l.url))) agent.links.push({ label: l.label.slice(0, 30), url: String(l.url) });
       else errors.push(`${at}.links: each link needs a label and an https:// url`);

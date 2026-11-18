@@ -1,8 +1,9 @@
-// fleet-dashboard: one card per agent (sigil, name, light, what it's doing, where, a 6-hour XP graph, top two skills).
+// fleet-dashboard: one card per agent (sigil, name, light, its job, what it's doing, where, a 6-hour XP graph, top two
+// skills, the job's one number and the last thing it did). Retired agents get no card: one grey strip names them.
 // Tapping a card opens that agent's Details page. Redraws on 'fd:fleet' (the page's one 15-second read); no fetches.
 'use strict';
 window.fdCards = (() => {
-  const { h, s, fmt, compact, nice, clock, sigil, colorOf, rank } = window.fd;
+  const { h, s, fmt, compact, nice, clock, ago, sigil, colorOf, rank } = window.fd;
   const STALE = 20 * 60_000;
 
   const doing = (a) => (a.doing ? nice(a.doing.label) + (a.doing.detail ? ` · ${nice(a.doing.detail)}` : '') : a.light === 'red' ? 'not reporting' : 'no recent reading');
@@ -49,18 +50,35 @@ window.fdCards = (() => {
     return h('div', { class: 'ro-key' }, ...items, h('span', { class: 'ro-xp' }, h('b', {}, `+${compact(sum.all)} XP`), ' · 6 h'));
   }
 
+  // the job in words (with its slot, and its status when it isn't live), then its one number and the last thing done
+  const jobEl = (a) => (a.job ? h('div', { class: 'ro-job' }, a.job.title, a.job.slot ? h('span', { class: 'ro-slot muted' }, ` · ${a.job.slot}`) : null,
+    a.job.status && a.job.status !== 'live' ? h('span', { class: 'ro-jst' }, ` · ${a.job.status}`) : null) : null);
+  function jobLine(a) {
+    const n = a.job?.number, d = a.lastDid; if (!n && !d) return null;
+    return h('div', { class: 'ro-jobline' },
+      n ? h('div', { class: 'ro-num' }, h('span', { class: 'muted' }, `${n.label} `), h('b', { class: 'num' + (n.live ? ' live' : '') }, n.value), n.note ? h('span', { class: 'muted' }, ` · ${n.note}`) : null) : null,
+      d ? h('div', { class: 'ro-last muted' }, 'Last: ', d.text, d.t ? ` · ${ago(d.t)}` : '') : null);
+  }
+  function retiredStrip(list) {
+    if (!list?.length) return null;
+    const day = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return h('div', { class: 'retired-strip', role: 'note', 'aria-label': 'Retired agents' }, h('span', { class: 'rt-k' }, 'Retired'),
+      ...list.map((r) => h('span', { class: 'rt-i', title: `${r.name} is retired${r.since ? ' since ' + day(r.since) : ''}.${r.note ? ' ' + r.note : ''}` }, r.name + (r.since ? ` · ${day(r.since)}` : ''))));
+  }
+
   function card(a, f, from) {
     const { el: g, sum } = graph(a), map = f.maps?.[a.adapter], wh = where(a, map), now = doing(a);
     const reasons = (a.why ?? []).filter((w) => w !== a.doing?.label), why = a.light !== 'green' && reasons.length ? reasons.join(' · ') : null;   // "paused" once, not twice
     return h('a', { class: `ro-card ${a.light}`, href: `/agent?key=${encodeURIComponent(a.key)}${from ? '&from=' + from : ''}`, 'data-agent': a.key, id: 'card-' + a.key,
-      'aria-label': `${a.name}: ${now}${wh ? ', ' + wh : ''}${why ? '. ' + why : ''}. Open details` },
+      'aria-label': `${a.name}${a.job ? ', ' + a.job.title : ''}: ${now}${wh ? ', ' + wh : ''}${why ? '. ' + why : ''}${a.lastDid ? '. Last: ' + a.lastDid.text : ''}. Open details` },
       h('div', { class: 'ro-top' }, sigil(a, 48),
         h('div', { class: 'ro-id' },
           h('div', { class: 'ro-name' }, h('span', { class: `dot ${a.light}`, 'aria-hidden': 'true' }), h('span', { class: 'ro-nm' }, a.name)),
+          jobEl(a),
           h('div', { class: 'ro-now' }, now),
           h('div', { class: 'ro-at' + (wh ? '' : ' unknown') }, wh ?? (map ? 'position not known' : '')),
           why ? h('div', { class: 'ro-why' }, why) : null)),
-      g, key(sum));
+      g, key(sum), jobLine(a));
   }
   const order = (agents) => agents.slice().sort((x, y) => (y.main - x.main) || y.xp6 - x.xp6 || x.name.localeCompare(y.name));   // the main agent, then by 6 h XP
 
@@ -73,9 +91,9 @@ window.fdCards = (() => {
       try {
         root.replaceChildren(
           h('h2', { class: 'sec ro-h' }, 'Agents ', h('span', { class: 'muted' }, `· ${list.length}`), h('span', { class: 'sec-note muted' }, 'graph = XP per 15 min, last 6 h · tap a card for details')),
-          h('div', { class: 'ro-grid' }, ...list.map((a) => card(a, f, from))));
+          h('div', { class: 'ro-grid' }, ...list.map((a) => card(a, f, from))), retiredStrip(f.retired));
       } catch (err) { root.replaceChildren(h('p', { class: 'muted' }, 'agent cards unavailable: ' + err.message)); }
     });
   }
-  return { doing, where, freshPlace, order };
+  return { doing, where, freshPlace, order, jobEl, jobLine };
 })();

@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import { ADAPTERS } from '../adapters/index.mjs';
 import { strip, stripXp, output, latest, lastGood } from './history.mjs';
-import { logFacts } from './logs.mjs';
+import { logFacts, timeOf } from './logs.mjs';
+import { numberView, lastDidOf, jobsFromFile, retiredOf } from './jobs.mjs';
 import { mask } from './mask.mjs';
 
 export const PLACE_MAX_AGE = 20 * 60_000;
@@ -39,7 +40,20 @@ export function skillColors(config, recs, now) {
   return { colors, order, other: OTHER };
 }
 
-export function agentStatus(a, recs, now, sampleMinutes) {
+// Agents still on the page, and the retired ones (a "retired" flag or an existing retiredFile), checked on every read.
+export function activeAgents(config) { return config.agents.filter((a) => !retiredOf(a)); }
+export function retiredList(config) {
+  return config.agents.map((a) => { const r = retiredOf(a); return r ? { key: a.key, name: a.name, since: r.since, note: r.note } : null; }).filter(Boolean);
+}
+
+// The job shown on the card: the jobs file's entry for this key if there is one (it can change without a restart),
+// else the agent's own "job" in fleet.json.
+export function jobFor(a, jobsFile, good, counters, now) {
+  const j = (jobsFile ? jobsFromFile(jobsFile, now)[a.key] : null) ?? a.job;
+  return j ? { title: j.title, slot: j.slot, status: j.status, number: numberView(j.number, good, counters) } : null;
+}
+
+export function agentStatus(a, recs, now, sampleMinutes, jobsFile = null) {
   const lf = logFacts(a, now);
   const paused = Boolean(a.pauseFile && pausedNow(a.pauseFile, now));
   const last = latest(recs, a.key, Math.max(PLACE_MAX_AGE, 3 * sampleMinutes * 60_000), now);
@@ -61,32 +75,34 @@ export function agentStatus(a, recs, now, sampleMinutes) {
   const doing = paused ? { label: 'paused' } : act?.label ? { label: act.label, detail: act.detail ?? null } : null;
   const place = act?.space ? { space: act.space, name: act.name ?? null, area: act.area ?? null, at: good.t } : null;
   const st = strip(recs, a.key, now);
+  const counters = { ...(good?.c ?? {}), ...(lf.counters ?? {}) };
   return {
     key: a.key, name: a.name, main: a.main, adapter: a.adapter, light, why,
     paused, doing, place, strip: st, xp6: stripXp(st),
-    counters: { ...(good?.c ?? {}), ...(lf.counters ?? {}) },
+    counters, job: jobFor(a, jobsFile, good, counters, now), lastDid: lf.has && !lf.missing ? lastDidOf(lf.lines, a.lastDid, timeOf) : null,
     lastLogAt: lf.has && !lf.missing ? lf.lastAt : null, sampleAt: good?.t ?? null, links: a.links,
   };
 }
 
 export function buildFleet(config, records, version, asksOpen, now = Date.now()) {
   const recs = records(now - 24 * 3_600_000);
-  const agents = config.agents.map((a) => agentStatus(a, recs, now, config.sampleMinutes));
+  const live = activeAgents(config);
+  const agents = live.map((a) => agentStatus(a, recs, now, config.sampleMinutes, config.jobsFile));
   const maps = {};
-  for (const a of config.agents) { const ad = ADAPTERS[a.adapter]; if (ad.map && !maps[a.adapter]) maps[a.adapter] = ad.map(a); }
+  for (const a of live) { const ad = ADAPTERS[a.adapter]; if (ad.map && !maps[a.adapter]) maps[a.adapter] = ad.map(a); }
   const count = (l) => agents.filter((x) => x.light === l).length;
   return {
     version, now, title: config.title, timeZone: config.timeZone, sampleMinutes: config.sampleMinutes,
     skills: skillColors(config, recs, now), maps,
     totals: { agents: agents.length, green: count('green'), yellow: count('yellow'), red: count('red'), xp6: agents.reduce((n, x) => n + x.xp6, 0), asksOpen },
     lastRound: recs.length ? recs[recs.length - 1].t : null,
-    agents,
+    agents, retired: retiredList(config),
   };
 }
 
 export function agentDetail(config, records, a, now = Date.now()) {
   const recs = records(now - 24 * 3_600_000);
-  const base = agentStatus(a, recs, now, config.sampleMinutes);
+  const base = agentStatus(a, recs, now, config.sampleMinutes, config.jobsFile);
   const good = lastGood(recs, a.key);
   const lf = config.showLog ? logFacts(a, now) : null;
   return {
@@ -98,9 +114,10 @@ export function agentDetail(config, records, a, now = Date.now()) {
 }
 
 export function outputFor(config, records, key, now = Date.now()) {
-  const keys = key === 'fleet' ? config.agents.map((a) => a.key) : [key];
+  const live = activeAgents(config);
+  const keys = key === 'fleet' ? live.map((a) => a.key) : [key];
   const recs = records(now - 24 * 3_600_000);
   const o = output(recs, keys, now);
   return { key, name: key === 'fleet' ? 'Whole fleet' : config.agents.find((a) => a.key === key)?.name, ...o,
-    roster: config.agents.map((a) => ({ key: a.key, name: a.name })) };
+    roster: live.map((a) => ({ key: a.key, name: a.name })) };
 }

@@ -15,7 +15,12 @@
       "log": "~/my-driver/log.jsonl",
       "pauseFile": "~/my-driver/PAUSE",
       "staleMinutes": 30,
-      "warnPattern": "\"event\":\"(failed|backoff|giving_up|config_error)\""
+      "warnPattern": "\"event\":\"(failed|backoff|giving_up|config_error)\"",
+      "job": { "title": "Woodcutting at the tree stand", "number": { "label": "Woodcutting total", "xp": "woodcutting" } },
+      "lastDid": [
+        { "match": "\"event\":\"act\",\"act\":\\[\"(\\w+)\"(?:,\"([\\w-]+)\")?.*\"result\":\"confirmed\"", "say": "$1 $2 (confirmed)" },
+        { "match": "\"event\":\"paused\",\"by\":\"([\\w-]+)\"", "say": "paused by $1" }
+      ]
     },
     {
       "key": "helper",
@@ -24,13 +29,16 @@
       "command": { "run": ["node", "status.mjs", "--json"], "cwd": "~/agents/helper" },
       "log": "~/agents/helper/helper.log",
       "logCounters": { "tasks": "tasks_done=(\\d+)" },
-      "warnPattern": "\\b(WARN|ERROR)\\b"
+      "warnPattern": "\\b(WARN|ERROR)\\b",
+      "job": { "title": "Answers support tickets", "slot": "weekdays", "number": { "label": "Tasks done", "counter": "tasks" } },
+      "lastDid": [{ "match": "closed ticket #(\\d+)", "say": "closed ticket #$1" }]
     },
     {
       "key": "notes",
       "name": "Note taker",
       "adapter": "file",
-      "file": { "path": "~/agents/notes/status.json", "maxAgeMinutes": 20 }
+      "file": { "path": "~/agents/notes/status.json", "maxAgeMinutes": 20 },
+      "retiredFile": "~/agents/notes/RETIRED"
     }
   ]
 }
