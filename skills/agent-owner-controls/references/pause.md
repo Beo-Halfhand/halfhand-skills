@@ -48,5 +48,5 @@ A bare `touch PAUSE` works too (no end time: paused until deleted). `doctor` and
 
 ## Watchdogs and dashboards
 - **Paused is yellow, not red.** A "log silent for N minutes" alarm must allow for paused time and for the longest normal job. When you make a job longer, change the alarm in the same step: a longer work block once set off a false "silent" alarm every block for a morning.
-- **Expired is not paused.** Anything that shows "paused" should check `until` (`isPaused()`), not only whether the file exists.
+- **Expired is not paused.** Anything that shows "paused" should check `until` (`isPaused()`), not only whether the file exists. fleet-dashboard's page does this, and the self-test checks that it agrees with `isPaused()`.
 - **Check the right folder.** One stranded hold was missed for an hour because someone checked the wrong agent's folder. `controls.mjs status` reads the folder you give it and says which pause it found.

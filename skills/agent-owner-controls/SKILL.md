@@ -43,7 +43,7 @@ A made-up agent, `scout`, in a temporary folder: caps and a floor refuse, three 
 
 ```sh
 node --version                                   # 20 or newer
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 118 ok, 0 failed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 120 ok, 0 failed
 ```
 
 The library imports fleet-dashboard's `scripts/lib/asks.mjs` and `mask.mjs`, so keep this skill next to [fleet-dashboard](../fleet-dashboard/) (the plugin installs them together). The self-test also runs city-driver-starter's `pause.mjs`.
@@ -145,4 +145,4 @@ Tell the owner: the agent folder and asks folder, the policy's mode and caps, th
 - Never put a real key, wallet, account or person into an ask, a handback or a policy example.
 
 ## Status
-**In development.** Merged from four drafts that were each tested by a fresh agent on a clean folder (2026-10-26, all pass with fixes, fixes done) and run live with a fleet of game agents; rewritten here as one library on shared files. Tested on Node 26, macOS arm64: `selftest.mjs` 118/118 (pause, asks, gate, handback, limits, log rolling with four writers at once, the command line, fleet-dashboard's asks code and city-driver-starter's driver and `pause.mjs`). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container): demo, self-test, a small agent wired to all four controls, and every owner command.
+**In development.** Merged from four drafts that were each tested by a fresh agent on a clean folder (2026-10-26, all pass with fixes, fixes done) and run live with a fleet of game agents; rewritten here as one library on shared files. Tested on Node 26, macOS arm64: `selftest.mjs` 120/120 (pause, asks, gate, handback, limits, log rolling with four writers at once, the command line, fleet-dashboard's asks code and city-driver-starter's driver and `pause.mjs`). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container): demo, self-test, a small agent wired to all four controls, and every owner command.

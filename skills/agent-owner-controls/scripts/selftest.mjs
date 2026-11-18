@@ -16,6 +16,7 @@ import { createLimits, policyProblems } from './lib/limits.mjs';
 import { makeGate } from './lib/gate.mjs';
 import { readLines, writeJson, appendLine, previousPart } from './lib/files.mjs';
 import { readPause as starterReadPause } from '../../city-driver-starter/scripts/driver.mjs';
+import { agentStatus } from '../../fleet-dashboard/scripts/lib/fleet.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONTROLS = path.join(HERE, 'controls.mjs');
@@ -53,6 +54,24 @@ try {
     writeJson(path.join(d, 'PAUSE'), { by: 'x', until: 'tomorrow-ish' });
     check('an until that is not a date is flagged and treated as no end time', readPause(d).badUntil && isPaused(d));
     check('city-driver-starter reads the same PAUSE the same way', JSON.stringify((({ by, until, expired }) => ({ by, until, expired }))(starterReadPause(d))) === JSON.stringify({ by: 'x', until: 'tomorrow-ish', expired: false }));
+  }
+  {
+    // fleet-dashboard's page must agree with isPaused(): an expired PAUSE is left in place and must not show yellow.
+    const d = tmp(), f = path.join(d, 'PAUSE');
+    const card = () => agentStatus({ key: 'scout', name: 'scout', adapter: 'fake', pauseFile: f, staleMinutes: 30 }, [{ t: Date.now(), a: { scout: { xp: {} } } }], Date.now(), 5);
+    const shapes = [
+      ['live until', () => writeJson(f, { by: 'me', at: new Date().toISOString(), until: new Date(Date.now() + MIN).toISOString() })],
+      ['expired until', () => writeJson(f, { by: 'me', at: new Date(Date.now() - 2 * MIN).toISOString(), until: new Date(Date.now() - 1000).toISOString() })],
+      ['touch PAUSE', () => fs.writeFileSync(f, '')],
+      ['not JSON', () => fs.writeFileSync(f, 'not json')],
+      ['until not a date', () => writeJson(f, { by: 'x', until: 'tomorrow-ish' })],
+      ['no PAUSE', () => fs.rmSync(f, { force: true })],
+    ];
+    const off = shapes.filter(([, make]) => { make(); return card().paused !== isPaused(d); }).map(([n]) => n);
+    check('fleet-dashboard\'s page agrees with isPaused() on all 6 PAUSE shapes', off.length === 0, off.join(', '));
+    shapes[1][1]();
+    const c = card();
+    check('FORCED REFUSAL (expired pause) on the page: not "paused", not yellow', !c.paused && c.light === 'green' && !c.why.includes('paused') && c.doing?.label !== 'paused', `${c.light} ${c.why}`);
   }
   {
     const d = tmp();

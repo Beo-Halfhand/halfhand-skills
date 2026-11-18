@@ -32,7 +32,7 @@ The base format is defined once, in [fleet-dashboard's asks reference](../../fle
 |---|---|
 | The driver | PAUSE (every 5 s, own timer), policy.json and STOP (every check), answers, events.jsonl (on resume, and for prompts) |
 | A takeover script | RELEASED (until it's for its own pause), PAUSE (`stillMine()` before each action) |
-| fleet-dashboard | PAUSE (yellow light), asks and answers, the agent's log |
+| fleet-dashboard | PAUSE (yellow light while it counts; an expired PAUSE is ignored), asks and answers, the agent's log |
 | `controls.mjs status` / `doctor` | all of the above |
 
 ## Order of a takeover
