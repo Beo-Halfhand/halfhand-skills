@@ -10,7 +10,9 @@ export function tail(file) {
   if (!file) return null;
   let st; try { st = fs.statSync(file); } catch { return null; }
   const c = cache.get(file);
-  if (c && c.size === st.size && c.mtime === st.mtimeMs) return c;
+  // Size and mtime say "unchanged" only for a file that has been still for a moment: on Linux the mtime clock is coarse
+  // (a few ms), so a log rewritten twice in one tick with lines of the same length would otherwise come back stale.
+  if (c && c.size === st.size && c.mtime === st.mtimeMs && Date.now() - st.mtimeMs > 2000) return c;
   let lines = [];
   let fd;
   try {

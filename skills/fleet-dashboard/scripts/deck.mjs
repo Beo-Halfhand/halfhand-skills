@@ -17,7 +17,8 @@ import { round, startSampler } from './lib/sampler.mjs';
 import { createServer } from './lib/server.mjs';
 import { buildDemo, keepLogsMoving } from './lib/demo.mjs';
 import { activeAgents } from './lib/fleet.mjs';
-import { retiredOf } from './lib/jobs.mjs';
+import { retiredOf, jobsFileReport } from './lib/jobs.mjs';
+import { logFacts } from './lib/logs.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const VERSION = JSON.parse(fs.readFileSync(path.join(HERE, 'package.json'), 'utf8')).version;
@@ -58,7 +59,7 @@ async function main() {
   } else {
     const file = path.resolve(o.config);
     const r = loadConfig(file, ADAPTERS);
-    if (r.errors.length) { console.error(`fleet.json has ${r.errors.length} problem(s):\n- ${r.errors.join('\n- ')}`); process.exit(2); }
+    if (r.errors.length) { console.error(`${path.basename(file)} has ${r.errors.length} problem(s):\n- ${r.errors.join('\n- ')}`); process.exit(2); }
     config = r.config;
     if (o.port !== null) config.port = o.port;
   }
@@ -66,13 +67,24 @@ async function main() {
   if (o.check) {
     console.log(`config ok: ${config.agents.length} agent(s), data in ${config.dataDir}`);
     let bad = 0;
+    const jr = jobsFileReport(config.jobsFile);
+    if (jr) {
+      console.log(`  jobs file ${path.basename(config.jobsFile)}: ${Object.keys(jr.jobs).length} job(s)${jr.errors.length ? ` · PROBLEMS: ${jr.errors.join('; ')}` : ''}`);
+      if (jr.errors.length) bad++;
+      for (const k of Object.keys(jr.jobs)) if (!config.agents.some((a) => a.key === k)) console.log(`    note: "${k}" in the jobs file is not an agent in the config`);
+    }
     for (const a of config.agents) {
       const r = retiredOf(a);
       if (r) { console.log(`  – ${a.key} (${a.adapter}): retired${r.note ? ` (${r.note})` : ''}, not read`); continue; }
       const s = await sampleOne(a, { now: Date.now() });
       if (s.err) { bad++; console.log(`  ✗ ${a.key} (${a.adapter}): ${s.err}`); continue; }
       const xp = Object.keys(s.xp ?? {}).length, where = s.act?.name ?? s.act?.space;
-      console.log(`  ✓ ${a.key} (${a.adapter}): ${xp} skill(s)${s.act?.label ? `, doing "${s.act.label}"` : ''}${where ? `, at ${where}` : ''}${a.log ? (fs.existsSync(a.log) ? ', log found' : ', LOG NOT FOUND') : ''}${a.job ? `, job "${a.job.title}"` : ''}${a.lastDid.length ? `, ${a.lastDid.length} lastDid rule(s)` : ''}`);
+      const job = jr?.jobs[a.key] ?? a.job, from = jr?.jobs[a.key] ? ' (from the jobs file)' : '';
+      console.log(`  ✓ ${a.key} (${a.adapter}): ${xp} skill(s)${s.act?.label ? `, doing "${s.act.label}"` : ''}${where ? `, at ${where}` : ''}${a.log ? (fs.existsSync(a.log) ? ', log found' : ', LOG NOT FOUND') : ''}${job ? `, job "${job.title}"${from}` : ''}${a.lastDid.length ? `, ${a.lastDid.length} lastDid rule(s)` : ''}`);
+      // a number naming a skill or counter this reading doesn't have would say "not read yet" forever
+      const n = job?.number, counters = { ...(s.c ?? {}), ...(logFacts(a).counters ?? {}) };
+      if (n?.xp !== undefined && !(n.xp in (s.xp ?? {}))) console.log(`    ! job number: no skill "${n.xp}" in this reading (skills: ${Object.keys(s.xp ?? {}).join(', ') || 'none'})`);
+      if (n?.counter !== undefined && !(n.counter in counters)) console.log(`    ! job number: no counter "${n.counter}" in this reading or the log (counters: ${Object.keys(counters).join(', ') || 'none'})`);
     }
     process.exit(bad ? 1 : 0);
   }

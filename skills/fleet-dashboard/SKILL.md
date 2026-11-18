@@ -48,8 +48,8 @@ The demo builds a made-up crew of 8 agents in an invented harbour town, in a tem
 Run the self-test once on the machine it will live on:
 
 ```sh
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 168 ok, 0 failed on macOS (about 5 seconds)
-                                                 # Linux: 167, or 168 when systemd-analyze is installed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 175 ok, 0 failed on macOS (about 5 seconds)
+                                                 # Linux: 174, or 175 when systemd-analyze is installed
 ```
 
 ### 2. Copy it out and write the config
@@ -73,7 +73,7 @@ One entry per agent. Every field is in [references/config.md](references/config.
 | `warnPattern` | A regular expression for warning lines; 3 in 15 minutes turns the light yellow |
 | `logCounters` | Numbers to pull from the log, e.g. `{ "coins": "coins=(\\d+)" }`: the last match is shown |
 | `job` | The job in words and one number for it: `{ "title": "Woodcutting at the tree stand", "slot": "night shift", "number": { "label": "Woodcutting total", "xp": "woodcutting" } }`. The number comes from an XP total (`xp`), a counter (`counter`, `"as": "rank"` shows `#12`) or text you keep up to date (`value`, with `asOf`). A missing reading shows "—, not read yet", never 0 |
-| `lastDid` | What "Last:" reads in the log: rules like `{ "match": "DONE (\\w+) block", "say": "$1 block done" }`. The newest matching line wins, and only the `(groups)` are copied into `say`, masked. **Never capture chat text or anything personal** |
+| `lastDid` | What "Last:" reads in the log: a list of rules, like `[{ "match": "DONE (\\w+) block", "say": "$1 block done" }]`. The newest matching line wins, and only the `(groups)` are copied into `say`, masked. **Never capture chat text or anything personal** |
 | `retired` / `retiredFile` | `true` (or a short note), or a file whose existence retires the agent with no restart. A retired agent is never read, never red and never counted; its name sits in the Retired strip. Delete the file to bring it back |
 
 ### 3. Plug in your agents
@@ -92,7 +92,7 @@ node deck.mjs --config fleet.json --check
 #   ✓ scout (midnight-city): 6 skill(s), doing "gather resource", at Forest, log found
 ```
 
-Fix every ✗ before going on. The reasons are the adapter's own words, masked. A retired agent shows as `– key: retired, not read`.
+Fix every ✗ and `!` before going on. The reasons are the adapter's own words, masked. A `!` under an agent means its job's number names a skill or counter this reading doesn't have (a typo shows "—, not read yet" forever). A retired agent shows as `– key: retired, not read`, and a `jobsFile` gets its own line with any problems in it.
 
 **Jobs that change often:** put them in a separate file and set `"jobsFile": "./jobs.json"` at the top level: `{ "agents": { "<key>": { "title": "…", "number": {…} } } }`. The dashboard re-reads it at most once a minute, so a new job shows up without a restart. An entry there wins over that agent's `job` in fleet.json, and a broken file falls back to fleet.json. Details in [references/config.md](references/config.md#job-number-last).
 
@@ -102,7 +102,7 @@ Fix every ✗ before going on. The reasons are the adapter's own words, masked. 
 node deck.mjs --config fleet.json                # http://localhost:7700  ·  phone layout: /m
 ```
 
-It worked if `curl -s http://localhost:7700/api/health` says `"ok":true`. The sampler reads every `sampleMinutes` (default 5), so a new agent shows yellow "no reading yet" until then: `node deck.mjs --config fleet.json --once` takes a reading now. The first graphs need two readings (one interval). History is kept `keepDays` (default 7) in `dataDir/history/`, one file per day.
+It worked if `curl -s http://localhost:7700/api/health` says `"ok":true` (no curl, as in slim containers: `node -e "fetch('http://localhost:7700/api/health').then(r=>r.text()).then(console.log)"`). The sampler reads every `sampleMinutes` (default 5), so a new agent with no `log` shows yellow "no reading yet" until then (one with a fresh log is green): `node deck.mjs --config fleet.json --once` takes a reading now. The first graphs need two readings (one interval). History is kept `keepDays` (default 7) in `dataDir/history/`, one file per day.
 
 Stop it with Ctrl-C, or `kill <pid>` if it runs in the background.
 
@@ -173,4 +173,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 168/168 (config, masking, history maths, logs, asks, all four adapters, lights, jobs, "Last:", retired agents, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at all nine widths on the demo's main and phone pages (clean) and Details (two map labels a few pixels too wide at 320 and 1024 px, known); and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip; run again for 0.2.0 (jobs, "Last:" and retired agents). Version 0.2.0 brings the cards in line with the private dashboard it came from (its v0.15.3, 18 November 2026). The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 175/175 (config, masking, history maths, logs, asks, all four adapters, lights, jobs, "Last:", retired agents, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at all nine widths on the demo's main and phone pages (clean) and Details (two map labels a few pixels too wide at 320 and 1024 px, known); and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip; run again for 0.2.0 (jobs, "Last:", a jobs file and retired agents: all worked; its fixes are in). Version 0.2.0 brings the cards in line with the private dashboard it came from (its v0.15.3, 18 November 2026). The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.

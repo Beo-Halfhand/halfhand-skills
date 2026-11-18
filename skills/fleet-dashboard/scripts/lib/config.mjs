@@ -82,7 +82,7 @@ export function parseConfig(raw, file, adapters) {
       staleMinutes: num(a.staleMinutes, 30, 1, 7 * 24 * 60, `${at}.staleMinutes`),
       warnPattern: null, logCounters: {}, links: [],
       job: null, lastDid: [],
-      retired: a.retired === true || (typeof a.retired === 'string' && a.retired.trim()) ? (a.retired === true ? true : a.retired.trim().slice(0, 160)) : false,
+      retired: a.retired === true || (typeof a.retired === 'string' && a.retired.trim() && !/^\s*(false|no|0|off)\s*$/i.test(a.retired)) ? (a.retired === true ? true : a.retired.trim().slice(0, 160)) : false,
       retiredFile: a.retiredFile ? expand(a.retiredFile, base) : null,
       opts: a[adapterName] && typeof a[adapterName] === 'object' ? a[adapterName] : {},
       base,
@@ -93,7 +93,7 @@ export function parseConfig(raw, file, adapters) {
       try { const r = new RegExp(String(re)); if (!/\((?!\?)/.test(String(re))) throw new Error('no group'); agent.logCounters[k] = r; }
       catch { errors.push(`${at}.logCounters.${k} must be a regular expression with one (group) around the number`); }
     }
-    if (a.retired !== undefined && typeof a.retired !== 'boolean' && typeof a.retired !== 'string') errors.push(`${at}.retired must be true or a short note`);
+    if (a.retired !== undefined && ((typeof a.retired !== 'boolean' && typeof a.retired !== 'string') || (typeof a.retired === 'string' && /^\s*(false|no|0|off)\s*$/i.test(a.retired)))) errors.push(`${at}.retired must be true, false or a short note (write false without quotes)`);
     { const j = parseJob(a.job, `${at}.job`); agent.job = j.job; errors.push(...j.errors); }
     { const l = parseLastDid(a.lastDid, `${at}.lastDid`); agent.lastDid = l.rules; errors.push(...l.errors); }
     for (const l of Array.isArray(a.links) ? a.links : []) {

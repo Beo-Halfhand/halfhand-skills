@@ -21,7 +21,7 @@ All screenshots are of the demo: invented agents in an invented town.
 | `scripts/adapters/` | `midnight-city`, `command`, `file`, `fake`, and the contract (`index.mjs`) |
 | `scripts/lib/` | Config, sampler, history maths, lights, jobs and "Last:", logs, masking, asks, the web server, the demo |
 | `scripts/public/` | The pages: cards, map, graphs, asks, phone layout. No build step, strict CSP |
-| `scripts/selftest.mjs` | 168 checks, no network, no browser (about 5 seconds) |
+| `scripts/selftest.mjs` | 175 checks, no network, no browser (about 5 seconds) |
 | `references/config.md` | Every config field, and exactly when a light turns yellow or red |
 | `references/adapters.md` | The Sample and Map shapes, the built-in adapters, writing your own |
 | `references/midnight-city.md` | What the City adapter reads (one read-only call), its map, use with city-driver-starter |

@@ -37,7 +37,7 @@ export function sample(agent, ctx) {
     p.on('close', (code, sig) => {
       clearTimeout(timer);
       if (sig) return reject(new Error('the status command timed out'));
-      if (code !== 0) return reject(new Error(`status command exit ${code}: ${err.trim().split('\n').pop() ?? ''}`));
+      if (code !== 0) { const lines = err.trim().split('\n'); return reject(new Error(`status command exit ${code}: ${(lines.find((l) => /\b(Error|error|cannot|not found|No such)\b/.test(l)) ?? lines.pop() ?? '').trim()}`)); }   // the first error line, not Node's version footer
       try { resolve(JSON.parse(out)); } catch { reject(new Error('the status command did not print JSON')); }
     });
   });

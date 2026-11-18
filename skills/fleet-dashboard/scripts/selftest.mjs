@@ -17,7 +17,7 @@ import { xpInto, strip, stripXp, output, prune, appendRound, makeReader, GAP_EST
 import { timeOf, logFacts } from './lib/logs.mjs';
 import { listAsks, answerAsk } from './lib/asks.mjs';
 import { agentStatus, skillColors, buildFleet, PALETTE, activeAgents } from './lib/fleet.mjs';
-import { parseJob, numberView, lastDidOf, jobsFromFile, retiredOf } from './lib/jobs.mjs';
+import { parseJob, numberView, lastDidOf, jobsFromFile, retiredOf, jobsFileReport } from './lib/jobs.mjs';
 import { round } from './lib/sampler.mjs';
 import { createServer } from './lib/server.mjs';
 import { buildDemo } from './lib/demo.mjs';
@@ -107,6 +107,13 @@ const cfg = (agents, extra = {}) => parseConfig({ agents, ...extra }, path.join(
   const iso = (m) => new Date(NOW - m * MIN).toISOString();
   fs.writeFileSync(f, [`[${iso(40)}] WARN old`, `[${iso(30)}] coins=10`, `[${iso(10)}] WARN one`, `[${iso(5)}] WARN two coins=12`, `[${iso(2)}] fine`].join('\n') + '\n');
   const lf = logFacts({ log: f, warnPattern: /WARN/, logCounters: { coins: /coins=(\d+)/ } }, NOW);
+  {   // a log rewritten in place within one mtime tick (Linux's mtime clock is coarse), lines of the same length
+    const g = path.join(d, 'same.log'), A = '[2026-11-17T08:00:00Z] state A\n', B = '[2026-11-17T08:00:00Z] state B\n';
+    const t0 = new Date(Math.floor(Date.now() / 1000) * 1000);   // a whole second, so both writes really share one mtime
+    fs.writeFileSync(g, A); fs.utimesSync(g, t0, t0); logFacts({ log: g }, NOW);
+    fs.writeFileSync(g, B); fs.utimesSync(g, t0, t0);
+    check('log cache: a same-size rewrite with the same mtime is read again, not served stale', logFacts({ log: g }, NOW).lines.at(-1).endsWith('state B'));
+  }
   check('log facts: last time, warnings in 15 min only, last counter', lf.lastAt === NOW - 2 * MIN && lf.warns === 2 && lf.counters.coins === 12, JSON.stringify({ ...lf, lines: undefined }));
 }
 
@@ -185,6 +192,8 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   check('command: no JSON is a failed read', c4.err === 'the status command did not print JSON');
   const c5 = await sampleOne(cmd([process.execPath, '-e', 'setTimeout(()=>{}, 60000)']), { now: NOW, timeoutMs: 3000 });
   check('command: a hung command times out', /timed out|no answer/.test(c5.err ?? ''), c5.err);
+  const c7 = await sampleOne(cmd([process.execPath, path.join(HERE, 'no-such-status-script.mjs')]), { now: NOW });
+  check('command: a failing status script shows its error line, not Node\'s version footer', /exit 1: .*Cannot find module/.test(c7.err ?? '') && !/Node\.js v\d/.test(c7.err ?? ''), c7.err);
   const c6 = await sampleOne(cmd(['definitely-not-a-command-fd']), { now: NOW });
   check('command: a missing program says so', /not found/.test(c6.err ?? ''), c6.err);
 
@@ -258,6 +267,18 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   check('last: the city-driver-starter recipe shows only actions the City confirmed', lastDidOf([J({ event: 'act', act: ['gather', 'pine_tree'], why: 'job', submitted: true, result: 'confirmed' }), J({ event: 'act', act: ['eat'], submitted: true, result: 'failed', reason: 'no food' }), J({ event: 'wait', why: 'mid-action' })], ex.lastDid, timeOf)?.text === 'gather pine tree (confirmed)');
   const e1 = cfg([{ key: 'a', adapter: 'fake', lastDid: [{ match: '(', say: 'x' }] }]).errors, e2 = cfg([{ key: 'a', adapter: 'fake', lastDid: [{ match: 'x' }] }]).errors, e3 = cfg([{ key: 'a', adapter: 'fake', retired: 3 }]).errors;
   check('config: a bad lastDid regex, a rule with no words and a retired that is not true or a note are refused', e1.some((e) => e.includes('match')) && e2.some((e) => e.includes('say')) && e3.some((e) => e.includes('retired')));
+  // from the 11-18 stranger test
+  const e4 = cfg([{ key: 'a', adapter: 'fake', lastDid: [{ match: 'batch (\\d+): (\\d+)', say: 'batch $1, $3 items' }] }]).errors;
+  check('config: a "say" that uses more $N than the match has groups is refused', e4.some((e) => e.includes('uses $3, but match has 2')), e4.join('; '));
+  check('config: a bad regex says why', e1.some((e) => /match is not a valid regular expression \(.+\)/.test(e)), e1.join('; '));
+  const e5 = cfg([{ key: 'a', adapter: 'fake', retired: 'false' }]);
+  check('config: retired "false" (in quotes) is refused, and does not retire the agent', e5.errors.some((e) => e.includes('without quotes')) && e5.config.agents[0].retired === false);
+  {
+    const jd = tmp('fd-jr-'), f = path.join(jd, 'jobs.json');
+    const miss = jobsFileReport(f); fs.writeFileSync(f, '{ nope'); const broken = jobsFileReport(f);
+    fs.writeFileSync(f, JSON.stringify({ agents: { a: { title: 'Fine' }, b: { title: 'X', status: 'maybe' }, 'Bad Key': { title: 'x' } } })); const mixed = jobsFileReport(f);
+    check('jobs file report (for --check): missing, broken and bad entries each named; good ones kept', /no file there yet/.test(miss.errors[0]) && /not valid JSON/.test(broken.errors[0]) && Object.keys(mixed.jobs).join() === 'a' && mixed.errors.some((e) => e.includes('agents.b.status')) && mixed.errors.some((e) => e.includes('"Bad Key"')));
+  }
 
   const d = tmp('fd-jobs-'), jf = path.join(d, 'jobs.json'), log = path.join(d, 'a.log');
   fs.writeFileSync(log, lines.join('\n') + '\n');
@@ -346,9 +367,18 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   const before = makeReader(config.dataDir)(Date.now() - 3_600_000).length;
   const once = await run(['--config', file, '--once']);
   check('deck.mjs --once: appends one round and exits', once.code === 0 && makeReader(config.dataDir)(Date.now() - 3_600_000).length === before + 1, once.out);
+  {   // --check names the jobs file, prefers its job, and flags a number whose skill or counter isn't in the reading
+    const jf = path.join(d, 'jobs.json'); fs.writeFileSync(jf, JSON.stringify({ agents: { wren: { title: 'Mending nets' }, ghost: { title: 'Nobody' } } }));
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')); raw.jobsFile = './jobs.json';
+    raw.agents.find((x) => x.key === 'moss').job = { title: 'Woodcutting', number: { label: 'Wood', xp: 'woodcuting' } };
+    raw.agents.find((x) => x.key === 'juniper').job = { title: 'Mining', number: { label: 'Gold', counter: 'gold' } };
+    const cf = path.join(d, 'check-jobs.json'); fs.writeFileSync(cf, JSON.stringify(raw));
+    const cj = await run(['--config', cf, '--check']);
+    check('deck.mjs --check: the jobs file gets a line, its job wins, a typo in a number\'s skill or counter is flagged', /jobs file jobs\.json: 2 job\(s\)/.test(cj.out) && /"ghost" in the jobs file is not an agent/.test(cj.out) && /✓ wren .*job "Mending nets" \(from the jobs file\)/.test(cj.out) && /! job number: no skill "woodcuting"/.test(cj.out) && /! job number: no counter "gold"/.test(cj.out), cj.out.slice(0, 600));
+  }
   const badc = path.join(d, 'bad.json'); fs.writeFileSync(badc, JSON.stringify({ agents: [{ key: 'A B', adapter: 'fake' }] }));
   const bc = await run(['--config', badc]);
-  check('deck.mjs with a broken config: exit 2 and the problems listed', bc.code === 2 && /\.key must be/.test(bc.out));
+  check('deck.mjs with a broken config: exit 2, the file named, and the problems listed', bc.code === 2 && /\.key must be/.test(bc.out) && /^bad\.json has 1 problem/m.test(bc.out));
 }
 
 // ── always-on files ──

@@ -52,7 +52,11 @@ export function parseLastDid(raw, at) {
   for (const [i, r] of raw.entries()) {
     const say = typeof r?.say === 'string' ? r.say.trim().slice(0, 80) : '';
     if (!say) { errors.push(`${at}[${i}].say must be the words to show, like "sold $1 fish"`); continue; }
-    try { rules.push({ re: new RegExp(String(r.match)), say }); } catch { errors.push(`${at}[${i}].match is not a valid regular expression`); }
+    let re;
+    try { re = new RegExp(String(r.match)); } catch (e) { errors.push(`${at}[${i}].match is not a valid regular expression (${String(e.message).replace(/^Invalid regular expression: /, '').slice(0, 80)})`); continue; }
+    const groups = new RegExp(`${re.source}|`).exec('').length - 1, used = Math.max(0, ...[...say.matchAll(/\$([1-9])/g)].map((m) => Number(m[1])));
+    if (used > groups) { errors.push(`${at}[${i}].say uses $${used}, but match has ${groups} (group${groups === 1 ? '' : 's'})`); continue; }
+    rules.push({ re, say });
   }
   return { rules, errors };
 }
@@ -103,6 +107,21 @@ export function jobsFromFile(file, now = Date.now()) {
   return jobs;
 }
 
+// What --check says about the jobs file: how many jobs it gives, and every problem in it (the page just drops bad ones).
+export function jobsFileReport(file) {
+  if (!file) return null;
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { jobs: {}, errors: [e.code === 'ENOENT' ? 'no file there yet (fleet.json\'s own jobs show until it exists)' : `not valid JSON (${String(e.message).slice(0, 80)}); fleet.json's own jobs show until it is fixed`] }; }
+  const jobs = {}, errors = [];
+  if (!raw || typeof raw.agents !== 'object' || raw.agents === null || Array.isArray(raw.agents)) errors.push('must be { "agents": { "<key>": { "title": "…" } } }');
+  for (const [k, v] of Object.entries(raw?.agents ?? {})) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(k)) { errors.push(`"${k}" is not an agent key`); continue; }
+    const { job, errors: e } = parseJob(v, `agents.${k}`); if (job) jobs[k] = job; errors.push(...e);
+  }
+  return { jobs, errors };
+}
+
 // Retired = "retired" in fleet.json, or the retiredFile exists. Checked every time, so creating the file takes the
 // agent off the page and out of the sampler on the next read, with no restart. The file's text is the note.
 export function retiredOf(a) {
@@ -110,5 +129,5 @@ export function retiredOf(a) {
   if (!a.retiredFile) return null;
   let st; try { st = fs.statSync(a.retiredFile); } catch { return null; }
   let note = ''; try { note = fs.readFileSync(a.retiredFile, 'utf8').slice(0, 2000); } catch { /* a folder, or unreadable: still retired */ }
-  return { since: st.mtimeMs, note: clean(note, 160) || null };
+  return { since: Math.round(st.mtimeMs), note: clean(note, 160) || null };
 }
