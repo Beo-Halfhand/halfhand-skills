@@ -51,6 +51,10 @@ Status means: **in development** (being written), **tested** (a fresh agent with
 
 `node tools/check.mjs` lints every `SKILL.md` (frontmatter, name matches folder, links resolve) and checks the tree for secrets and setup details with the [prepublish-leak-check](skills/prepublish-leak-check/) rules. CI runs it with gitleaks on every push.
 
+## Changes
+
+What changed in each release is in [CHANGELOG.md](CHANGELOG.md). Releases are tagged from `v0.7.0` on.
+
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Found a skill that misled your agent? See [CONTRIBUTING.md](CONTRIBUTING.md).
