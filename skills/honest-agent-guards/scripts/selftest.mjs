@@ -21,6 +21,7 @@ const L = loadList(EXAMPLE_LIST);
   const p = parseList(['## Claims', '- [B01] any: `drift` — tell: no drift', '- [B02] all: `a` + `(` — tell: x', '- [B03] off any: `queue` — tell: q', '- [B04] some other line', '- [B01] any: `again` — tell: dup',
     '## Places not on the map', '- [P01] Glow Market — say: the market', '## Map', '- Areas: Central Plaza, Bison Valley'].join('\n'));
   check('list: a bad regex and a broken line are reported, not fatal', p.errors.some((e) => e.startsWith('B02: bad regex')) && p.errors.some((e) => e.startsWith('unparsed claim line')));
+  check('list: a claim line without [brackets] is reported too', parseList('## Claims\n- B13 any: `x` — tell: y').errors.some((e) => /unparsed claim line.*B13/.test(e)));
   check('list: off keeps a line switched off; an ID used twice keeps the first', p.claims.find((c) => c.id === 'B03').on === false && p.claims.filter((c) => c.id === 'B01').length === 1 && p.errors.some((e) => e.includes('used twice')));
   check('list: places and the map', p.places[0].key === 'glow market' && p.map.join() === 'Central Plaza,Bison Valley');
   const d = tmp(), f = path.join(d, 'list.md');
@@ -37,6 +38,7 @@ const L = loadList(EXAMPLE_LIST);
 // ── listed claims ──
 {
   eq('B01: a percentage on price drift is refused', claimWhy('Merchant prices drift about 15% in a few minutes, Wren.', { list: L }), 'banned:B01');
+  eq('B01 unless: a denial passes', claimWhy('Prices never drift, not even 1%.', { list: L }), null);
   eq('B01: a percentage alone is fine', claimWhy('I finished 80% of the block.', { list: L }), null);
   eq('B02: "rates move" is refused', claimWhy('Sell your ore before the rates drift.', { list: L }), 'banned:B02');
   eq('B02 unless: a denial passes, the same words without it do not', [claimWhy('Meme coin prices never drift, it is the same rate every sale.', { list: L }), claimWhy('Meme coin prices drift all day.', { list: L })], [null, 'banned:B02']);
@@ -86,6 +88,8 @@ const L = loadList(EXAMPLE_LIST);
   const items = [{ id: 'cinder_axe', name: 'Cinder Axe', cat: 'tool' }, { id: 'wood_log', name: 'Wood Log', cat: 'raw_resource' }];
   eq('catalog: a count of what he carries must be his real count', [stateWhy('I have 40 wood logs.', { ...me, items }), stateWhy('I have 90 wood logs.', { ...me, items })], [null, 'state:count:wood log 90']);
   eq('catalog: a named tool he lacks is refused', stateWhy('My cinder axe is sharp.', { ...me, items }), 'state:item:cinder axe');
+  eq('an item named after a skill is not a level ("1 fishing rod")', [stateWhy('I have 1 fishing rod.', { levels: { fishing: 14 }, inv: { fishing_rod: 1 } }), stateWhy('I carry 9 fishing nets.', { levels: { fishing: 14 } })], [null, null]);
+  eq('a sentence with no subject is still about the speaker ("Trying to get up to level 20…")', stateWhy('Trying to get up to level 20 in fishing.', { levels: { fishing: 14 } }), 'state:goal-level:fishing 20');
   eq('inventory as a list of { item, qty } works too', stateWhy('I use my iron pickaxe.', { inv: [{ item: 'iron_pickaxe', qty: 1 }] }), null);
 }
 
@@ -114,6 +118,9 @@ const L = loadList(EXAMPLE_LIST);
   eq('action: "my crew" only when it is allowed', [actionWhy('My crew works the north side.', R), actionWhy('My crew works the north side.', { ...R, ownOk: ['crew'] })], ['invented:own:crew', null]);
   eq('action: weather allowed when the world has it', actionWhy("It's raining again.", { ...R, world: true }), null);
   eq('action: allowed trades match whole words ("Kingofcoins" is not "coins")', actionWhy('I rotate trades, Kingofcoins.', { specialty: 'woodcutting', trades: ['coins'] }), 'invented:trade:trades');
+  eq('action: "I mine copper" and "I hack terminals" are skills too; "also" allows a second one', [actionWhy('I mine copper.', { specialty: 'fishing' }), actionWhy('I hack terminals.', { specialty: 'fishing' }), actionWhy('I hack terminals.', { specialty: 'fishing', also: ['hacking'] }), actionWhy('I think mine is better.', { specialty: 'fishing' })], ['invented:skill:mining', 'invented:skill:hacking', null, null]);
+  eq('action: "the rain" is weather, "Rain Wheat Deck" is a place', [actionWhy('The rain has been heavy.', R), actionWhy('I farm the Rain Wheat Deck.', D)], ['invented:world:rain', null]);
+  eq('action: a map name is never weather, in any case ("the rain wheat deck"); "when it rains" still is', [checkLine('Go for the rain wheat deck.', { list: L, self: R }), checkLine('The soil gets slippery when it rains.', { list: L, self: R })], [null, 'invented:world:rains']);
   eq('action: no trades listed → any trade claim is refused', actionWhy('I sell my meme coins.', { specialty: 'woodcutting' }), 'invented:trade:sell');
 }
 
@@ -149,6 +156,7 @@ const L = loadList(EXAMPLE_LIST);
   check('guard: your own extra check is part of the loop', r6.skip === true && r6.why === 'mine:greeting');
   const hits = scan(['Prices drift 15%. Try the Glow Market.', 'I cut wood.', { text: 'The queues get long.', them: 'is there a queue?' }], ctx);
   check('scan: every hit per line, and "them" from a JSON line', hits.length === 1 && hits[0].hits.join() === 'banned:B01,banned:place:Glow Market');
+  eq('scan: one hit per check in one sentence (list, place, state, action)', scan(['I fish all day at the Glow Market, prices drift 15% there.'], ctx)[0].hits, ['banned:B01', 'banned:place:Glow Market', 'invented:skill:fishing']);
   eq('sentences: "Dr." does not end a sentence', sentencesOf('Ask Dr. Vex. She knows.').length, 2);
 }
 
@@ -171,6 +179,18 @@ const L = loadList(EXAMPLE_LIST);
   check('cli: a missing state file says so (exit 2)', e.code === 2 && /not found/.test(e.out));
   const g = await run(['check', 'I sell widgets.'], { GUARDS_LIST: bad });
   check('cli: GUARDS_LIST picks the list', g.code === 0);
+  const fb = await run(['check', 'I cut wood.', '--list', path.join(d, 'nope.md')]);
+  check('cli: a missing --list warns that the example list is used', fb.code === 0 && /warning: using the EXAMPLE list: not found/.test(fb.out), fb.out);
+  const uf = await run(['check', 'x', '--lst', 'a.md']);
+  check('cli: an unknown option → exit 2, named', uf.code === 2 && /unknown option --lst/.test(uf.out));
+  fs.writeFileSync(path.join(d, 'typo.json'), JSON.stringify({ speciality: 'fishing', level: {} }));
+  const ty = await run(['check', 'I fish.', '--state', path.join(d, 'typo.json')]);
+  check('cli: state keys the checks don\'t read are named', /don't read: speciality, level/.test(ty.out), ty.out);
+  const nm = await run(['check', 'Concord Forge told me.', '--name', 'Concord Forge']);
+  check('cli: --name lets a name that looks like a place through', nm.code === 0);
+  fs.writeFileSync(path.join(d, 'gaps.txt'), 'Prices drift 15%.\n\n\nI cut wood.\n{"who": "no text"}\nPrices drift 15% again.\n');
+  const gp = await run(['scan', path.join(d, 'gaps.txt')]);
+  check('cli scan: the file\'s own line numbers, and JSON lines with no "text" are counted', /^1: banned:B01/m.test(gp.out) && /^6: banned:B01/m.test(gp.out) && /1 JSON line\(s\) had no "text"/.test(gp.out), gp.out);
 }
 
 for (const d of TEMPS) fs.rmSync(d, { recursive: true, force: true });

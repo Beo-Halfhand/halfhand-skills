@@ -5,15 +5,16 @@ What the agent really is and has, right before this reply. The level, gear and a
 | Field | Type | Checks | If you leave it out |
 |---|---|---|---|
 | `levels` | `{ skill: level }` | a level it gives for itself must be its real one; a target level is always refused | **any** level it gives for itself is refused (it doesn't know its levels, so it may not state one) |
-| `inv` | `{ item_id: qty }` or `[{ item, qty }]` | gear it says it carries must be there; a count it gives must be exact; "I still need X" when it has X is refused | every claim to carry gear is refused |
+| `inv` | `{ item_id: qty }` or `[{ item, qty }]` | gear it says it carries must be there; "I still need X" when it has X is refused; a count it gives ("I have 40 wood logs") must be exact, **for items `items` names** (without a catalog, only the generic tool words) | every claim to carry gear is refused |
 | `items` | `[{ id, name, cat \| gear }]` | lets it recognise named items ("Cinder Axe") and counts ("40 wood logs") | only generic tool words are known: pickaxe, axe, rod, kit, meter, blade, sword, decoder, rig |
 | `specialty` | skill name | the one skill it may say it works, plus that skill's tool (axe, pick, rod, kit, meter) | every "I fish / I mine / I chop…" is refused |
 | `crafts` | `[words]` | what it really crafts ("planks"); a craft sentence that names one passes | every "I craft / make / build / forge…" is refused |
 | `trades` | `[words]` | what it really sells or buys ("meme coins", "food"), matched as whole words | every "I sell / buy / trade…" is refused |
 | `ownOk` | `[words]` | other things it may say it has ("crew", "team") | "my crew / my team / my guild" is refused |
+| `also` | `[skill names]` | other skills it really works besides `specialty` (a City agent that also hacks: `["hacking"]`) | "I hack…" is refused unless hacking is its specialty |
 | `world` | boolean | `true` lets it talk about weather | weather words are refused (most game worlds have none the agent can see) |
 | `skills` | `[names]` | the skill names that count in level claims | Midnight City's 20 skills |
-| `skillVerbs` | `{ skill: "verb\|verb" }` | extra or replacement verbs for the "other skill" check | City verbs for fishing, mining, farming, scavenging, agility, energy, woodcutting |
+| `skillVerbs` | `{ skill: "verb\|verb" }` | extra or replacement verbs for the "other skill" check | City verbs for hacking, fishing, mining, farming, scavenging, agility, energy, woodcutting |
 
 **Fresh, not typed.** Build it from the agent's own reads every few minutes, or before each reply. A level typed into a config file is right for a day. After that the guard refuses the agent's true level and lets the stale one through.
 

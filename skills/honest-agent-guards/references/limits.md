@@ -13,6 +13,8 @@ Read this before you trust it. The guards catch the **shapes** of claims we've s
 | Invented events | "A big trade happened at the plaza." | there's no event check |
 | About someone else | "Your friend sold me ore." | only first-person claims are checked against `self` |
 | A place in lower case | "the glow market" | places are recognised by capital letters |
+| A count without a catalog | "I have 9 raw fish" (it has 7) | counts are checked only for items `self.items` names; pass the catalog |
+| A skill with no verbs | "I do some cooking" | only the skills in `skillVerbs` are checked for invented work (eight City skills by default); add yours |
 | A real place, false use | "The Central Crypto Merchant buys logs." | the place is real; what it does isn't checked (write a claim line for it) |
 
 ## False refusals (true lines refused)

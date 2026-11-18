@@ -36,7 +36,7 @@ Around them, one loop, `guard()`:
 
 ```sh
 node --version                                  # 20 or newer
-node <this skill>/scripts/selftest.mjs          # expect: selftest: 73 ok, 0 failed (about a second)
+node <this skill>/scripts/selftest.mjs          # expect: selftest: 86 ok, 0 failed (about a second)
 node <this skill>/scripts/demo.mjs              # six made-up drafts through the loop, with a stand-in model
 ```
 
@@ -45,7 +45,7 @@ The demo shows each outcome: a clean line, a redraft, a trimmed line and a skip.
 ### 2. Copy it out and make your list
 
 ```sh
-mkdir -p ~/agent-guards && cp <this skill>/scripts/guards.mjs <this skill>/scripts/example-list.md ~/agent-guards/
+mkdir -p ~/agent-guards && cp <this skill>/scripts/guards.mjs <this skill>/scripts/example-list.md <this skill>/scripts/state.example.json ~/agent-guards/
 cp ~/agent-guards/example-list.md ~/agent-guards/my-list.md
 node ~/agent-guards/guards.mjs list --list ~/agent-guards/my-list.md          # every line, ✓ on, – off, ✗ broken
 ```
@@ -63,7 +63,7 @@ The state checks need a small object, fresh before each reply, made from what th
 
 Every field and where to get it, for a City agent and for any other bot: [references/state.md](references/state.md). **Read the state, don't type it.** Levels and inventory typed by hand go stale and the checks will refuse true lines. A field you leave out is a field it can't check.
 
-Try lines against it before you wire anything:
+Start from `cp ~/agent-guards/state.example.json ~/agent-guards/state.json` and fill it in. Try lines against it before you wire anything:
 
 ```sh
 cd ~/agent-guards
@@ -73,7 +73,7 @@ node guards.mjs check "I'm level 30 in woodcutting now." --list my-list.md --sta
 node guards.mjs check "I cut wood at the tree stands." --list my-list.md --state state.json        # ok
 ```
 
-Exit code: 0 ok, 1 refused, 2 a usage error.
+Exit code: 0 ok, 1 refused, 2 a usage error (an unknown option, a missing state file). A warning on stderr means it used the **example** list because yours wasn't found, or that your state has a key the checks don't read (a typo such as `speciality` fails safe, but silently, so the warning names it). Add `--name "<their name>"` to try a line the way the loop does.
 
 ### 4. Put the loop in front of "send"
 
@@ -81,7 +81,10 @@ Exit code: 0 ok, 1 refused, 2 a usage error.
 import { fileURLToPath } from 'node:url';
 import { guard, loadList } from './agent-guards/guards.mjs';   // relative to your driver's file
 
-const list = loadList(fileURLToPath(new URL('./agent-guards/my-list.md', import.meta.url)));   // cached; re-read when the file changes
+const LIST = fileURLToPath(new URL('./agent-guards/my-list.md', import.meta.url));
+
+// in your reply path, every time:
+const list = loadList(LIST);   // cheap: one stat; the file is read again only when it changed, so edits apply to the next reply
 const r = await guard(draft, { list, self: myState(), them: theirMessage, name: theirName }, {
   redraft: async (reason, line) => askModel(`${prompt}\n\nYour last try was rejected (it ${reason}): "${line}". Write a different reply that answers what they actually said.`),
 });
@@ -132,4 +135,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Generalised from two libraries in daily use on a fleet of talking Midnight City agents: `banned-claims` v0.1.2 (the list, places, levels and gear, the stock-line catch) and `action-claims` v0.1.0 (invented actions, built from crew samples on 18 November 2026). Fleet-specific parts became settings: the allowed trades, the crew line, the place-name lead words (now taken from your map) and the item catalog. Tested on Node 26, macOS arm64: `selftest.mjs` 73/73, including the 29 crew-sample cases. On 2,034 lines the fleet really sent, it gives the same verdict as the fleet libraries on every line but four. Those four address a player whose name looks like a place ("…, Concord Forge."), and this version lets them through. Porting it found two bugs in the originals, fixed here: "mining" counted as the requirement word "min.", so a false level after "mining" passed, and "My …" at the start of a sentence wasn't first person, so "My mining is level 30" wasn't checked.
+**In development.** Generalised from two libraries in daily use on a fleet of talking Midnight City agents: `banned-claims` v0.1.2 (the list, places, levels and gear, the stock-line catch) and `action-claims` v0.1.0 (invented actions, built from crew samples on 18 November 2026). Fleet-specific parts became settings: the allowed trades, the crew line, the place-name lead words (now taken from your map) and the item catalog. Tested on Node 26, macOS arm64: `selftest.mjs` 86/86, including the 29 crew-sample cases. On 2,034 lines the fleet really sent, it gives the same verdict as the fleet libraries on all but 13. Ten address a player whose name looks like a place ("…, Concord Forge."), which this version lets through; three are invented weather ("when it rains") that the fleet's check missed. A fresh agent in a Debian 12 / Node 22 container ran every step (self-test, demo, its own list and state, a bot with `guard()` and a stand-in model, live list edits, `scan`, mistakes, the limits table); its fixes are in. Porting it found two bugs in the originals, fixed here: "mining" counted as the requirement word "min.", so a false level after "mining" passed, and "My …" at the start of a sentence wasn't first person, so "My mining is level 30" wasn't checked.

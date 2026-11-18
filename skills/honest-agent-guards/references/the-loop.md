@@ -37,7 +37,7 @@ Keep the refused line in the prompt: models fix it better when they see it. Don'
 | `actionWhy(text, self)` | `invented:craft:<verb>`, `invented:trade:<verb>`, `invented:own:<thing>`, `invented:skill:<skill>`, `invented:world:<word>` |
 | `tell(why, ctx)` | plain words for the redraft, finishing "it …" |
 | `dropBad(text, whyFn, minLen)` | the text without refused sentences, or `null` |
-| `scan(lines, ctx)` | `[{ i, text, hits: [reasons] }]` for lines with any hit (every hit, not just the first) |
+| `scan(lines, ctx)` | `[{ i, line, text, hits: [reasons] }]` for lines with any hit: in each sentence, one hit from each check (list, place, state, action), so two inventions of the same kind in one sentence show once |
 | `loadList(path)`, `parseList(md)` | the list (see [list-format.md](list-format.md)); `list.tag` is a one-line summary to log |
 
 The reason strings are stable: count them, alert on them, and grep for them.
@@ -54,6 +54,10 @@ GUARD skipped state:level:woodcutting 30
 ```
 
 Log the list's `tag` when it changes, so a fallback to the example list doesn't go unnoticed. **Don't** log the refused text into anything public. It's the false thing you just stopped.
+
+## Load the list in the reply path
+
+Call `loadList(path)` before each reply, not once at start-up. It's one `stat`: the file is parsed again only when its modified time changed. A list object you keep in a variable never sees your edits.
 
 ## Where it goes in a driver
 

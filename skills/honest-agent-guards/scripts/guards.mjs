@@ -36,7 +36,7 @@ export function parseList(md) {   // pure → { claims, places, map, errors }
     if (!line.startsWith('- ')) continue;
     if (sec === 'claims') {
       const m = /^- \[([A-Z]\d+[a-z]?)\]\s+(off\s+)?(all|any):\s+(.*?)\s+—\s+tell:\s+(.*?)(?:\s+—\s+source:\s+(.*))?$/.exec(line);
-      if (!m) { if (/^- \[/.test(line)) errors.push(`unparsed claim line: ${line.slice(0, 60)}`); continue; }
+      if (!m) { errors.push(`unparsed claim line (want "- [B01] any: \`regex\` — tell: …"): ${line.slice(0, 60)}`); continue; }
       const [, id, off, kind, body, tellText, source] = m;
       const uIdx = body.search(/\s(?:unless|echo):\s/);
       const main = uIdx >= 0 ? body.slice(0, uIdx) : body, rest = uIdx >= 0 ? body.slice(uIdx) : '';
@@ -160,16 +160,17 @@ function levelNums(cl, SK) {   // pure: [{ n, at, skill? }] level numbers in a c
   for (const m of cl.matchAll(new RegExp(`\\b(?:level|lvl)\\s+(${[...Object.keys(NUMW), ...Object.keys(TENS)].join('|')})\\b(?![- ](?:${UNITS})\\b)`, 'gi'))) add(NUMW[m[1].toLowerCase()] ?? TENS[m[1].toLowerCase()], m.index + m[0].length - m[1].length);
   for (const m of cl.matchAll(/(?<![\w-])L(\d{1,3})\b/g)) add(m[1], m.index + 1);
   for (const m of cl.matchAll(new RegExp(`\\b(${SK})\\s+(\\d{1,3})\\b(?!\\s*(?:%|percent|crystals?|xp|ore|logs?|coins?|bars?|times|minutes|hours|days|items|actions|gathers))`, 'gi'))) add(m[2], m.index + m[0].length - m[2].length, skillKey(m[1]));
-  for (const m of cl.matchAll(new RegExp(`(?<![\\d.,])\\b(\\d{1,3})\\s+(${SK})\\b`, 'gi'))) add(m[1], m.index, skillKey(m[2]));
+  for (const m of cl.matchAll(new RegExp(`(?<![\\d.,])\\b(\\d{1,3})\\s+(${SK})\\b(?![\\s-]+(?:rods?|kits?|rigs?|meters?|nets?|lines?|bait|gear|tools?|spots?|pots?|traps?|boots?|gloves?|packs?|bags?|axes?|picks?|pickaxes?|decoders?|items?))`, 'gi'))) add(m[1], m.index, skillKey(m[2]));   // "1 fishing rod" is an item
   return out;
 }
 const REQ_BEFORE = /\b(?:needs?|needed|requires?|required|opens?(?: up)?|unlocks?|at least|minimum|min\b\.?|from|starting at|gated at)\s*(?:\w+\s+){0,3}$/i;
 const THING_AFTER = /^[\s-]*(?:\w+[\s-]+)?(?:spots?|beds?|banks?|pools?|sources?|veins?|stands?|terminals?|tools?|gear|pickaxes?|axes?|items?|recipes?|contracts?|areas?|zones?|nodes?|kelp|shrimp|reefs?|docks?|traps?|requirement|unlock|work|jobs?|stations?|sites?|plots?)\b/i;
 const GOAL_BEFORE = /\b(?:up to|to reach|reach(?:ing)?|get(?:ting)?(?:\s+\w+){0,3}\s+to|push\w*(?:\s+\w+){0,3}\s+to|bring\w*(?:\s+\w+){0,3}\s+to|aim\w*\s+for|work\w*\s+(?:toward|towards|up to)|toward|towards|climb\w*(?:\s+\w+){0,3}\s+to|grind\w*(?:\s+\w+){0,3}\s+to|level\w*(?:\s+\w+){0,2}\s+to|train\w*(?:\s+\w+){0,3}\s+to|next|until|once I|before I|hitting|to hit|close to|almost|nearly|shy of|away from|on (?:my|the) way to)\b[^.!?]{0,30}$/i;
 const GOAL_AFTER = /^\s*(?:next|soon|eventually|someday|one day|by (?:tonight|tomorrow|the weekend))\b/i;
+const NO_SUBJECT = /^\s*(?:just\s+|still\s+|been\s+)?(?:trying|working|getting|heading|going|aiming|grinding|training|pushing|levell?ing|hoping|planning|saving|climbing|almost|nearly|close)\b/i;   // "Trying to get to level 20."
 function selfClause(cl, sen) {   // pure: is this clause about the speaker?
   if (SECOND.test(cl)) return false;
-  if (FIRST.test(cl)) return true;
+  if (FIRST.test(cl) || (NO_SUBJECT.test(sen) && !OTHER_SUBJ.test(sen) && !SECOND.test(sen))) return true;
   // a clause with no subject of its own carries on from a first-person sentence ("I'm on chemistry, still at level 4")
   return !OTHER_SUBJ.test(cl) && !/^\s*(?:the|a|an|this|that|these|those|it|its|it's|there|here|every|each|some|most|all|[A-Z][a-z]+\s+[a-z]+s\b)/i.test(cl) && FIRST.test(sen) && !SECOND.test(sen);
 }
@@ -230,20 +231,23 @@ const near = (verbs) => new RegExp(`${SELF}${ADV}\\s+(?:[\\w'’-]+\\s+){0,1}?($
 const CRAFT = near('craft|crafts|crafted|crafting|make|makes|made|making|build|builds|built|building|forge|forges|forged|forging|smelt|smelts|smelted|smelting|smith|smiths|smithed|smithing|cook|cooks|cooked|cooking|brew|brews|brewed|brewing|assemble|assembles|assembled|assembling|repair|repairs|repaired|repairing|refine|refines|refined|refining|upgrade|upgrades|upgraded|upgrading|enchant|enchants|enchanted|sharpen|sharpened|carve|carves|carved|carving');
 const TRADE = near('sell|sells|sold|selling|buy|buys|bought|buying|trade|trades|traded|trading|swap|swaps|swapped|deal|deals|dealt|barter|bartered|rent|rented|lend|lent');
 const OWN = new RegExp(`(?:${SELF}${ADV}\\s+(?:own|owns|got|carry|carries|carried|keep|keeps|hold|holds|use|uses|used|using|wield|wields|equip|equipped|bring|brought|have|has)|\\bmy)\\s+(?:[\\w'’-]+\\s+){0,3}?(tools?|axes?|pickaxes?|picks?|rods?|kits?|gear|swords?|blades?|knives|knife|armou?r|hammers?|shovels?|saws?|meters?|bars?|ingots?|planks?|ore|gems?|pets?|house|home|shop|stall|plot|land|boat|drones?|workshop|forge|cart|wagon|crew|team|guild)\\b`, 'i');
-const SKILL_VERBS = { fishing: 'fish|fished|fishing|catch fish|caught fish', mining: 'mine ore|mined|mining', farming: 'farm|farms|farmed|farming|harvest|harvested|harvesting|grow crops|plant|planted', scavenging: 'scavenge|scavenged|scavenging|salvage|salvaged|salvaging',
+const SKILL_VERBS = { hacking: 'hack|hacks|hacked|hacking|decrypt|decrypts|decrypted|decrypting', fishing: 'fish|fished|fishing|catch fish|caught fish', mining: 'mine (?:ore|copper|iron|gold|silver|coal|stone|gems?|crystals?|\\w+ ore)|mines (?:ore|copper|iron|gold|coal)|mined|mining', farming: 'farm|farms|farmed|farming|harvest|harvested|harvesting|grow crops|plant|planted', scavenging: 'scavenge|scavenged|scavenging|salvage|salvaged|salvaging',
   agility: 'climb|climbs|climbed|climbing|run the rigging|train agility', energy: 'tap power|work the substation|energy work', woodcutting: 'chop|chops|chopped|chopping|cut wood|cuts wood|fell trees|felled' };
 const TOOL = { woodcutting: /^axe$/, mining: /^pick(?:axe)?$/, fishing: /^rod$/, farming: /^kit$/, scavenging: /^kit$/, agility: /^kit$/, energy: /^meter$/ };   // the noun alone: 'pickaxe' is not an axe
-const WORLD = /\b(weather|raining|rainy|rainstorms?|storms?|stormy|snow\w*|sunny|foggy|heat ?wave|cold snap)\b/i;
+const WORLD = /\b(weather|raining|rainy|rainstorms?|storms?|stormy|snow\w*|sunny|foggy|heat ?wave|cold snap|[Rr]ain(?:s|ed|fall)?(?!\s+[A-Z]))\b/;   // "Rain Wheat Deck" (a capital after it) is a name
 const sing = (w) => String(w).toLowerCase().replace(/(ves)$/, 'fe').replace(/(es|s)$/, '');
 const wordsOf = (list) => (list ?? []).map((x) => String(x).toLowerCase().replace(/_/g, ' ')).filter(Boolean);
-export function actionWhy(text, self = {}) {   // → 'invented:<kind>:<word>' | null
+export function actionWhy(text, self = {}, list = null) {   // → 'invented:<kind>:<word>' | null · list: its map's names never count as weather
   const sp = String(self.specialty ?? '').toLowerCase(), held = Object.keys(invMap(self.inv)).join(' ').toLowerCase().replace(/_/g, ' ');
-  const crafts = wordsOf(self.crafts), trades = wordsOf(self.trades), ownOk = wordsOf(self.ownOk);
+  const crafts = wordsOf(self.crafts), trades = wordsOf(self.trades), ownOk = wordsOf(self.ownOk), also = wordsOf(self.also).map((x) => x.replace(/ /g, '_'));
   const skillRe = Object.fromEntries(Object.entries({ ...SKILL_VERBS, ...(self.skillVerbs ?? {}) }).map(([k, v]) => [k, near(v)]));
   for (const s of sentencesOf(text)) {
     if (/\?\s*$/.test(s) && !/\bI\b/.test(s.replace(/^.*?,\s*/, ''))) continue;   // a question to them claims nothing
     const low = s.toLowerCase(); let m;
-    if (!self.world && WORLD.test(s)) return `invented:world:${s.match(WORLD)[1].toLowerCase()}`;
+    if (!self.world) {   // a place on the map ("the rain wheat deck", any case) is not weather
+      const w = (list?.map ?? []).reduce((t, n) => t.replace(new RegExp(`\\b${escRe(n)}\\b`, 'gi'), ' '), s);
+      const m2 = WORLD.exec(w); if (m2) return `invented:world:${m2[1].toLowerCase()}`;
+    }
     if ((m = CRAFT.exec(s)) && !crafts.some((c) => low.includes(c))) return `invented:craft:${m[1].toLowerCase()}`;
     if ((m = TRADE.exec(s)) && !trades.some((c) => new RegExp(`\\b${escRe(c.replace(/s$/, ''))}s?\\b`, 'i').test(low))) return `invented:trade:${m[1].toLowerCase()}`;   // whole words: "Kingofcoins" is not "coins"
     if ((m = OWN.exec(s))) {
@@ -251,23 +255,27 @@ export function actionWhy(text, self = {}) {   // → 'invented:<kind>:<word>' |
       const own = (TOOL[sp] && TOOL[sp].test(w)) || (w.length >= 3 && held.includes(w)) || ownOk.some((o) => sing(o) === w);
       if (!own) return `invented:own:${w}`;
     }
-    for (const [k, r] of Object.entries(skillRe)) if (k !== sp && (m = r.exec(s))) return `invented:skill:${k}`;
+    for (const [k, r] of Object.entries(skillRe)) if (k !== sp && !also.includes(k) && (m = r.exec(s))) return `invented:skill:${k}`;
   }
   return null;
 }
+
+// State keys that aren't read (a typo like "speciality" fails safe but silently): for warnings.
+export const STATE_KEYS = ['specialty', 'levels', 'inv', 'items', 'crafts', 'trades', 'ownOk', 'also', 'world', 'skills', 'skillVerbs'];
+export const unknownStateKeys = (self) => Object.keys(self ?? {}).filter((k) => !STATE_KEYS.includes(k));
 
 // ── one call for all of it, and the words for a redraft ─────────────────────
 // ctx = { list, them, name, self }. self may be null (then only the list is checked).
 export function checkLine(text, ctx = {}) {
   const list = ctx.list ?? loadList();
   return claimWhy(text, { list, them: ctx.them }) ?? placeWhy(text, { list, them: ctx.them, name: ctx.name })
-    ?? (ctx.self ? stateWhy(text, ctx.self) ?? actionWhy(text, ctx.self) : null);
+    ?? (ctx.self ? stateWhy(text, ctx.self) ?? actionWhy(text, ctx.self, list) : null);
 }
 const levelsText = (lv) => Object.entries(lv ?? {}).filter(([, n]) => n).sort((a, b) => b[1] - a[1]).map(([s, n]) => `${s.replace(/_/g, ' ')} ${n}`).join(', ');
 // Why it was refused, written to finish "Your last try was rejected (it …)". Never gives words to copy.
 export function tell(why, ctx = {}) {
   const w = String(why ?? ''), parts = w.split(':'), self = ctx.self ?? {}, list = ctx.list ?? loadList();
-  if (parts[0] === 'banned' && parts[1] === 'place') return `names a place that is not on the map ("${parts.slice(2).join(':')}"). Name only real places${list.map.length ? ` (for example ${list.map.slice(0, 4).join(', ')})` : ''}, or leave the place out`;
+  if (parts[0] === 'banned' && parts[1] === 'place') { const ex = [...new Set(list.places.map((p) => p.say))].slice(0, 2); return `names a place that is not on the map ("${parts.slice(2).join(':')}"). Name only places you have really been or seen named${ex.length ? ` (such as ${ex.join(', ')})` : ''}, or leave the place out`; }
   if (parts[0] === 'banned') { const c = list.claims.find((x) => x.id === parts[1]), p = list.places.find((x) => x.id === parts[1]); return c ? c.tell : p ? `names "${p.name}", which is not a real place. Say "${p.say}" instead, or leave it out` : 'makes a claim on the banned list. Leave it out'; }
   if (parts[0] === 'state') {
     const lv = levelsText(self.levels), what = parts.slice(2).join(':');
@@ -312,8 +320,9 @@ export function scan(lines, ctx = {}) {
   const out = [];
   for (const [i, raw] of lines.entries()) {
     const text = typeof raw === 'string' ? raw : raw?.text ?? '';
-    const hits = [...new Set(sentencesOf(text).map((s) => checkLine(s, { ...ctx, them: raw?.them ?? ctx.them })).filter(Boolean))];
-    if (hits.length) out.push({ i, text: text.slice(0, 160), hits });
+    const list = ctx.list ?? loadList(), them = raw?.them ?? ctx.them, self = ctx.self;
+    const hits = [...new Set(sentencesOf(text).flatMap((s) => [claimWhy(s, { list, them }), placeWhy(s, { list, them, name: raw?.name ?? ctx.name }), self ? stateWhy(s, self) : null, self ? actionWhy(s, self, list) : null]).filter(Boolean))];
+    if (hits.length) out.push({ i, line: raw?.line ?? i + 1, text: text.slice(0, 160), hits });
   }
   return out;
 }
@@ -321,7 +330,12 @@ export function scan(lines, ctx = {}) {
 // ── command line ────────────────────────────────────────────────────────────
 function args(argv) {
   const o = { _: [] };
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (['--list', '--state', '--them'].includes(a)) o[a.slice(2)] = argv[++i]; else o._.push(a); }
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (['--list', '--state', '--them', '--name'].includes(a)) { if (argv[i + 1] === undefined) { console.error(`${a} needs a value`); process.exit(2); } o[a.slice(2)] = argv[++i]; }
+    else if (a.startsWith('--')) { console.error(`unknown option ${a} (options: --list, --state, --them, --name)`); process.exit(2); }
+    else o._.push(a);
+  }
   return o;
 }
 function readState(file) {
@@ -330,13 +344,15 @@ function readState(file) {
 }
 function main() {
   const o = args(process.argv.slice(2)), [cmd, x] = o._;
-  const list = loadList(o.list ?? process.env.GUARDS_LIST ?? EXAMPLE_LIST), self = readState(o.state), ctx = { list, self, them: o.them ?? '' };
+  const list = loadList(o.list ?? process.env.GUARDS_LIST ?? EXAMPLE_LIST), self = readState(o.state), ctx = { list, self, them: o.them ?? '', name: o.name ?? '' };
+  if (cmd && list.source.startsWith('example (')) console.error(`warning: using the EXAMPLE list: ${list.source.replace(/^example \(your list: /, '').replace(/\)$/, '')} (${o.list ?? process.env.GUARDS_LIST})`);
+  const unk = unknownStateKeys(self); if (unk.length) console.error(`warning: --state has key(s) the checks don't read: ${unk.join(', ')} (known: ${STATE_KEYS.join(', ')})`);
   if (cmd === 'list') {
     console.log(`list: ${list.tag}${list.source.startsWith('example') ? '' : ` (${path.basename(list.file)})`}`);
     for (const c of list.claims) console.log(`  ${c.on ? '✓' : '–'} ${c.id}${c.echo ? ' (echo)' : ''}${c.unless ? ' (unless)' : ''}: ${c.tell.slice(0, 90)}`);
     for (const p of list.places) console.log(`  ${p.on ? '✓' : '–'} ${p.id}: ${p.name} → ${p.say}`);
     for (const e of list.errors) console.log(`  ✗ ${e}`);
-    process.exit(list.errors.length ? 1 : 0);
+    process.exit(list.errors.length || list.source.startsWith('example (') ? 1 : 0);
   }
   if (cmd === 'check' && x !== undefined) {
     const w = checkLine(x, ctx);
@@ -345,9 +361,14 @@ function main() {
   }
   if (cmd === 'scan' && x) {
     let raw; try { raw = fs.readFileSync(x, 'utf8'); } catch { console.error(`no file ${x}`); process.exit(2); }
-    const lines = raw.split('\n').filter((l) => l.trim()).map((l) => { if (l.startsWith('{')) { try { return JSON.parse(l); } catch { /* text */ } } return l; });
+    let skipped = 0;
+    const lines = raw.split('\n').map((l, n) => ({ l, n: n + 1 })).filter(({ l }) => l.trim()).map(({ l, n }) => {
+      if (l.trim().startsWith('{')) { try { const j = JSON.parse(l); if (typeof j?.text !== 'string') { skipped++; return null; } return { ...j, line: n }; } catch { /* plain text */ } }
+      return { text: l, line: n };
+    }).filter(Boolean);
     const hits = scan(lines, ctx);
-    for (const h of hits) console.log(`${h.i + 1}: ${h.hits.join(', ')}  ${h.text}`);
+    for (const h of hits) console.log(`${h.line}: ${h.hits.join(', ')}  ${h.text}`);
+    if (skipped) console.error(`warning: ${skipped} JSON line(s) had no "text" field and were not checked`);
     const by = {}; for (const h of hits) for (const k of h.hits) { const key = k.split(':').slice(0, 2).join(':'); by[key] = (by[key] ?? 0) + 1; }
     console.log(`scan: ${hits.length} of ${lines.length} line(s) refused${hits.length ? ` · ${Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}` : ''} · ${list.tag}`);
     process.exit(0);
