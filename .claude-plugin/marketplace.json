@@ -9,7 +9,7 @@
       "name": "halfhand",
       "source": "./",
       "description": "Skills from the builds at halfhand.dev: fit-check (text fit at nine widths), prepublish-leak-check (secrets and setup details before publishing), dust-wallet (a self-funded Midnight wallet that pays its fees in DUST), capped-cage (invariants and attack tests for a contract that holds funds next to an operator key), page-watch (a scheduled report of stale or broken public pages), sealed-count-proof (proving a count over sealed values on Midnight, with a test kit), city-driver-starter (a first driver for your own Midnight City agent: pause and honest logs), fleet-dashboard (one private page for every agent you run, with adapters and a one-command demo), safe-logs (one mask for secrets in output: in-process, as a pipe, or into log files), mirrored-workspace (tmux tabs an AI can read, masked before disk), agent-owner-controls (pause, ask, handback and limits through plain files), fleet-experiment-kit (run agents against each other, judge them on confirmed outcomes), agent-memory-vault (a markdown memory vault any assistant can use), honest-agent-guards (checks a talking agent's lines against a banned list and its own state before they're sent).",
-      "version": "0.7.0"
+      "version": "0.8.0"
     }
   ]
 }

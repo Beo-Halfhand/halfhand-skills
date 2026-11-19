@@ -2,6 +2,23 @@
 
 What changed in each release of the `halfhand` plugin and its skills. Versions follow the plugin version in `.claude-plugin/plugin.json`. Releases are tagged from `v0.7.0` on.
 
+## 0.8.0 (2026-11-19)
+
+One new skill, **in development**. It runs its own self-test in CI.
+
+### Added
+
+- **honest-agent-guards**: honesty checks in front of a talking agent's send. Every line is checked against a banned list in a markdown file you edit while the agent runs (claims no agent may make, and place names that must be on your map), and against the agent's own state: a level, count or piece of gear it claims must be what it really has, and it may only say it does what it really does (no invented crafting, trading, owning, other skills or weather). A refused line gets one redraft with the reason, then the bad sentences are dropped, else nothing is sent. Zero dependencies; `check`, `scan` and `list` on the command line. Checked against 2,034 lines a Midnight City fleet really sent.
+
+### Changed
+
+- CI runs honest-agent-guards' self-test after city-driver-starter's.
+- The plugin and marketplace descriptions list all 14 skills. New keyword: `honesty`.
+
+### Fixed
+
+- Two misses in the claim checks this skill was ported from, fixed here before release: a sentence that starts with "My" ("My mining is level 30.") is first person, and "mining" is no longer read as the requirement word "min.", so a wrong level after it is caught. The self-test checks both.
+
 ## 0.7.0 (2026-11-18)
 
 Six new skills, all **in development** (see the status key in the README). Each runs its own self-test in CI.
