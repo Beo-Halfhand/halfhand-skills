@@ -24,4 +24,4 @@ node scripts/guards.mjs check "Merchant prices drift about 15% in a few minutes.
 
 **Needs:** Node 20+. Nothing else. The guards never call the network.
 
-**Status:** coming (in development, not yet public). See the table in the [halfhand-skills README](https://github.com/Beo-Halfhand/halfhand-skills#skills).
+**Status:** in development. See the table in the [halfhand-skills README](https://github.com/Beo-Halfhand/halfhand-skills#skills).
