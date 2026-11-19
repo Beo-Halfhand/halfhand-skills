@@ -48,8 +48,8 @@ The demo builds a made-up crew of 8 agents in an invented harbour town, in a tem
 Run the self-test once on the machine it will live on:
 
 ```sh
-node <this skill>/scripts/selftest.mjs           # expect: selftest: 175 ok, 0 failed on macOS (about 5 seconds)
-                                                 # Linux: 174, or 175 when systemd-analyze is installed
+node <this skill>/scripts/selftest.mjs           # expect: selftest: 176 ok, 0 failed on macOS (about 5 seconds)
+                                                 # Linux: 175, or 176 when systemd-analyze is installed
 ```
 
 ### 2. Copy it out and write the config
@@ -173,4 +173,4 @@ When you set this up for someone, tell them:
 
 ## Status
 
-**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 175/175 (config, masking, history maths, logs, asks, all four adapters, lights, jobs, "Last:", retired agents, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at all nine widths on the demo's main and phone pages (clean) and Details (two map labels a few pixels too wide at 320 and 1024 px, known); and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip; run again for 0.2.0 (jobs, "Last:", a jobs file and retired agents: all worked; its fixes are in). Version 0.2.0 brings the cards in line with the private dashboard it came from (its v0.15.3, 18 November 2026). The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.
+**In development.** Rewritten from a private dashboard in daily use with Midnight City agents, with the game moved behind an adapter and every setup detail taken out. Tested on Node 26, macOS arm64: `selftest.mjs` 176/176 (config, masking, history maths, logs, asks, all four adapters, lights, jobs, "Last:", retired agents, the server's guards, the command line, the service files); [fit-check](https://github.com/Beo-Halfhand/fit-check) at all nine widths on the demo's main and phone pages (clean) and Details (two map labels a few pixels too wide at 320 and 1024 px, known); and the Midnight City adapter's `--check` against one live agent (read-only). Also run by a fresh agent following only this file on Node 22, Debian 12 (a container, no systemd, no browser): demo, self-test, two agents (`command` and `file`), `--check`, the JSON routes and an ask round trip; run again for 0.2.0 (jobs, "Last:", a jobs file and retired agents: all worked; its fixes are in). Version 0.2.0 brings the cards in line with the private dashboard it came from (its v0.15.3, 18 November 2026). The systemd unit passes `systemd-analyze verify` (systemd 252); it hasn't been run as a live service. The City is a preview game: its helper's fields can change, so re-run `--check` when its skill updates.

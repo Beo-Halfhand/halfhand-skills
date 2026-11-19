@@ -18,6 +18,7 @@ One new skill, **in development**. It runs its own self-test in CI.
 ### Fixed
 
 - Two misses in the claim checks this skill was ported from, fixed here before release: a sentence that starts with "My" ("My mining is level 30.") is first person, and "mining" is no longer read as the requirement word "min.", so a wrong level after it is caught. The self-test checks both.
+- fleet-dashboard: the demo's agent that went offline early had no "last thing done" in 59 of the day's 1,440 minutes (a few minutes after the half hour, at some hours UTC), and the self-test failed then. The demo now always gives it the sale it made before it stopped. A self-test check pins one of those minutes (176 checks).
 
 ## 0.7.0 (2026-11-18)
 

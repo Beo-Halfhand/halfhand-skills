@@ -317,6 +317,10 @@ console.log(JSON.stringify({ skills: { hacking: { xp: 1200, level: 3 }, mining: 
   const by = Object.fromEntries(f.agents.map((x) => [x.key, x.strip.bins]));
   check('demo: full 6-hour graphs, Quill\'s gap drawn as estimated, Basil stops, Sable starts late', f.agents.filter((x) => x.strip.bins.filter((b) => b.cov).length >= 22).length === 6 && by.quill.some((b) => b.est) && !by.basil.slice(-4).some((b) => b.cov) && by.sable.filter((b) => b.cov).length <= 10);
   check('demo: every card has a job and a last thing done; Tansy is retired (no card, not read, named in the strip)', f.agents.every((x) => x.job?.title && x.lastDid?.text) && f.retired.length === 1 && f.retired[0].name === 'Tansy' && !makeReader(config.dataDir)(Date.now() - 3_600_000).some((r) => 'tansy' in r.a), JSON.stringify(f.retired));
+  { const d2 = tmp('fd-demo-0432-'), at = Date.UTC(2026, 10, 19, 4, 32);   // a minute where the offline agent's short log had no block end
+    const { config: c2 } = await buildDemo(d2, { now: at, port });
+    const bl = fs.readFileSync(c2.agents.find((x) => x.key === 'basil').log, 'utf8').trim().split('\n');
+    check('demo: the agent that went offline early has a last thing done at any time of day (04:32 UTC)', lastDidOf(bl, c2.agents.find((x) => x.key === 'basil').lastDid, timeOf)?.text?.startsWith('sold '), JSON.stringify(bl.slice(-2))); }
   check('demo: 2 open asks', listAsks(config.asksDir, config.agents.map((x) => x.key)).asks.filter((x) => x.open).length === 2);
 
   const server = createServer({ config, records: makeReader(config.dataDir), version: 'test' });

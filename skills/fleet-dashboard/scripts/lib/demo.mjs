@@ -70,6 +70,9 @@ export async function buildDemo(dir, { now = Date.now(), port = 7700, sampleMinu
     const end = c.offlineMin ? now - c.offlineMin * MIN : now;
     for (let t = now - 120 * MIN; t <= end; t += 3 * MIN) lines.push(await logLine(a, t, i));
     for (let t = Math.ceil((now - 120 * MIN) / BLOCK) * BLOCK; t <= end; t += BLOCK) { const e = await eventLines(a, t, i); lines.push(...e); }
+    // an agent that went offline early can have no block end in its short log at some times of day: give it the sale it made before it stopped,
+    // so its card always has a last thing done (the self-test failed in 59 of the day's 1,440 minutes without this)
+    if (!lines.some((l) => / (?:DONE|SOLD) /.test(l))) lines.push(`[${new Date(end - MIN).toISOString()}] SOLD ${5 + (i % 12)} ${GOODS[c.skills[0]]} for ${20 + ((i * 13) % 40)} coins`);
     if (c.warns) for (let k = 0; k < c.warns; k++) lines.push(`[${new Date(now - (10 - 3 * k) * MIN).toISOString()}] WARN trade refused: the buyer is out of coins`);
     lines.sort();
     fs.writeFileSync(a.log, lines.join('\n') + '\n');
